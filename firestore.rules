@@ -1,0 +1,93 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function myProfile() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && myProfile().role == 'admin';
+    }
+
+    function isManagerOrAdmin() {
+      return isSignedIn() && (myProfile().role == 'admin' || myProfile().role == 'manager');
+    }
+
+    // Coleção de usuários: leitura aberta de propósito (mesmo sem login), para
+    // que a tela de login consiga descobrir qual e-mail está vinculado a um
+    // nome de usuário ANTES da pessoa estar autenticada. Isso expõe nome de
+    // usuário, e-mail interno e cargo de quem está cadastrado — nunca senha.
+    // Ver seção "Auditoria" do README para uma versão mais restrita futura.
+    match /users/{userId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Pedidos: qualquer usuário autenticado cria/edita; só admin ou gerente
+    // cancela (mesma regra usada para excluir pagamentos).
+    // (Nesta versão o "excluir" da interface apenas marca status = cancelado,
+    // então a regra abaixo bloqueia essa transição específica para quem não
+    // é admin/gerente — sem isso, a checagem existiria só na tela, e
+    // qualquer usuário logado poderia cancelar um pedido direto pela API.)
+    match /orders/{orderId} {
+      allow read, create: if isSignedIn();
+      allow update: if isSignedIn() && (request.resource.data.status != 'cancelado' || isManagerOrAdmin());
+      allow delete: if isAdmin();
+    }
+
+    // Coleções de cadastro geral: leitura/escrita para usuários autenticados.
+    match /clients/{id} {
+      allow read, write: if isSignedIn();
+    }
+    match /products/{id} {
+      allow read, write: if isSignedIn();
+    }
+    match /employees/{id} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    // Configurações sensíveis: só admin altera.
+    match /companySettings/{id} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+    match /contractSettings/{id} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+    match /withdrawalSettings/{id} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    // Logs: qualquer usuário autenticado pode gravar (a própria ação dele);
+    // ninguém edita ou apaga logs, para preservar a auditoria.
+    match /logs/{id} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn();
+      allow update, delete: if false;
+    }
+
+    // Demais coleções previstas para as próximas fases do projeto.
+    // Listadas explicitamente (em vez de um coringa) para não sobrepor,
+    // por engano, as regras mais restritas definidas acima (ex.: orders).
+    match /payments/{id} {
+      allow read, create, update: if isSignedIn();
+      allow delete: if isManagerOrAdmin();
+    }
+    match /expenses/{id} { allow read, write: if isSignedIn(); }
+    match /cashFlow/{id} { allow read, write: if isSignedIn(); }
+    match /reports/{id} { allow read, write: if isSignedIn(); }
+    match /notifications/{id} { allow read, write: if isSignedIn(); }
+    match /productHistory/{id} { allow read, write: if isSignedIn(); }
+    match /customerCredits/{id} { allow read, write: if isSignedIn(); }
+    match /calendarEvents/{id} { allow read, write: if isSignedIn(); }
+  }
+}
