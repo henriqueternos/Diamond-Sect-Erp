@@ -458,15 +458,15 @@ export function OrderForm({
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         <div>
           <label>Desconto (R$)</label>
-          <input type="number" step="0.01" value={discount} onChange={(e) => setDiscount(Number(e.target.value))} />
+          <input type="number" step="0.01" value={discount || ""} onChange={(e) => setDiscount(Number(e.target.value))} placeholder="0" />
         </div>
         <div>
           <label>Acréscimo (R$)</label>
-          <input type="number" step="0.01" value={surcharge} onChange={(e) => setSurcharge(Number(e.target.value))} />
+          <input type="number" step="0.01" value={surcharge || ""} onChange={(e) => setSurcharge(Number(e.target.value))} placeholder="0" />
         </div>
         <div>
           <label>Crédito usado (R$)</label>
-          <input type="number" step="0.01" value={creditUsed} onChange={(e) => setCreditUsed(Number(e.target.value))} />
+          <input type="number" step="0.01" value={creditUsed || ""} onChange={(e) => setCreditUsed(Number(e.target.value))} placeholder="0" />
           {client && <p className="text-[11px] text-mist-500 mt-1">Disponível: {client.availableCredit.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</p>}
         </div>
       </div>

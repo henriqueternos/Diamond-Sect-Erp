@@ -80,6 +80,9 @@ export default function Reports() {
   const rows: ReportRow[] = useMemo(() => {
     const result: ReportRow[] = [];
     orders.forEach((o) => {
+      // Pedido cancelado não conta em nenhum total/relatório — a não ser que
+      // alguém filtre especificamente por "Cancelado", para fins de auditoria.
+      if (o.status === "cancelado" && status !== "cancelado") return;
       if (rangeStart && o.orderDate < rangeStart) return;
       if (rangeEnd && o.orderDate > rangeEnd) return;
       if (sellerName && o.sellerName !== sellerName) return;

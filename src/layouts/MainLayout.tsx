@@ -60,12 +60,10 @@ export function MainLayout() {
       >
         <div className="flex items-center gap-3 px-4 h-16 border-b border-ink-600 shrink-0">
           <DiamondMark size={30} />
-          {!collapsed && (
-            <div className="min-w-0">
-              <p className="font-display text-lg leading-none text-mist-100 truncate">Diamond Sect</p>
-              <p className="text-[10px] tracking-widest text-mist-500 uppercase">Locação</p>
-            </div>
-          )}
+          <div className={`min-w-0 ${collapsed ? "lg:hidden" : ""}`}>
+            <p className="font-display text-lg leading-none text-mist-100 truncate">Diamond Sect</p>
+            <p className="text-[10px] tracking-widest text-mist-500 uppercase">Locação</p>
+          </div>
         </div>
 
         <nav className="flex-1 py-4 px-2 space-y-1 overflow-y-auto overscroll-contain">
@@ -84,7 +82,7 @@ export function MainLayout() {
               }
             >
               <span className="text-base w-4 text-center shrink-0">{item.icon}</span>
-              {!collapsed && <span className="truncate">{item.label}</span>}
+              <span className={`truncate ${collapsed ? "lg:hidden" : ""}`}>{item.label}</span>
             </NavLink>
           ))}
         </nav>
@@ -96,12 +94,10 @@ export function MainLayout() {
           >
             {collapsed ? "»" : "« Recolher menu"}
           </button>
-          {!collapsed && (
-            <div className="px-1 mb-2 min-w-0">
-              <p className="text-sm text-mist-100 truncate">{user?.name}</p>
-              <p className="text-xs text-mist-500 truncate">{user?.role === "admin" ? "Administrador" : user?.role}</p>
-            </div>
-          )}
+          <div className={`px-1 mb-2 min-w-0 ${collapsed ? "lg:hidden" : ""}`}>
+            <p className="text-sm text-mist-100 truncate">{user?.name}</p>
+            <p className="text-xs text-mist-500 truncate">{user?.role === "admin" ? "Administrador" : user?.role}</p>
+          </div>
           <button onClick={handleLogout} className="btn-secondary w-full text-xs">
             Sair
           </button>
@@ -114,7 +110,10 @@ export function MainLayout() {
         <header className="sticky top-0 z-20 h-16 border-b border-ink-600 bg-ink-800/95 backdrop-blur flex items-center px-3 md:px-6 gap-2 md:gap-4 shrink-0">
           <button
             className="lg:hidden btn-ghost !px-2 !py-2 text-lg shrink-0"
-            onClick={() => setMobileOpen(true)}
+            onClick={() => {
+              setCollapsed(false);
+              setMobileOpen(true);
+            }}
             aria-label="Abrir menu"
           >
             ☰

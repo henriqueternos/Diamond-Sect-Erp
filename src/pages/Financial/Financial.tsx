@@ -49,6 +49,14 @@ export default function Financial() {
 
   const activeOrders = orders.filter((o) => o.status !== "cancelado");
 
+  // Pagamentos de um pedido cancelado não devem contar em nenhum lugar do
+  // Financeiro — como se o pedido nunca tivesse existido para fins de valor.
+  const cancelledOrderIds = useMemo(
+    () => new Set(orders.filter((o) => o.status === "cancelado").map((o) => o.id)),
+    [orders]
+  );
+  const livePayments = useMemo(() => payments.filter((p) => !cancelledOrderIds.has(p.orderId)), [payments, cancelledOrderIds]);
+
   /** ---- Receita por período fixo (baseada nos pagamentos recebidos) ---- */
   const now = new Date();
   const todayStr = now.toISOString().slice(0, 10);
@@ -56,12 +64,12 @@ export default function Financial() {
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
   const yearStart = new Date(now.getFullYear(), 0, 1);
 
-  const revenueToday = payments.filter((p) => p.date === todayStr).reduce((s, p) => s + p.amount, 0);
-  const revenueWeek = payments.filter((p) => toDate(p.date) >= weekStart).reduce((s, p) => s + p.amount, 0);
-  const revenueMonth = payments.filter((p) => toDate(p.date) >= monthStart).reduce((s, p) => s + p.amount, 0);
-  const revenueYear = payments.filter((p) => toDate(p.date) >= yearStart).reduce((s, p) => s + p.amount, 0);
+  const revenueToday = livePayments.filter((p) => p.date === todayStr).reduce((s, p) => s + p.amount, 0);
+  const revenueWeek = livePayments.filter((p) => toDate(p.date) >= weekStart).reduce((s, p) => s + p.amount, 0);
+  const revenueMonth = livePayments.filter((p) => toDate(p.date) >= monthStart).reduce((s, p) => s + p.amount, 0);
+  const revenueYear = livePayments.filter((p) => toDate(p.date) >= yearStart).reduce((s, p) => s + p.amount, 0);
 
-  const totalReceived = payments.reduce((s, p) => s + p.amount, 0);
+  const totalReceived = livePayments.reduce((s, p) => s + p.amount, 0);
   const totalOpen = activeOrders.reduce((s, o) => s + o.openValue, 0);
 
   /** ---- Métricas do período filtrado (por data do pedido) ---- */
@@ -71,8 +79,8 @@ export default function Financial() {
     [activeOrders, rangeStart, rangeEnd]
   );
   const filteredPayments = useMemo(
-    () => payments.filter((p) => p.date >= rangeStart && p.date <= rangeEnd),
-    [payments, rangeStart, rangeEnd]
+    () => livePayments.filter((p) => p.date >= rangeStart && p.date <= rangeEnd),
+    [livePayments, rangeStart, rangeEnd]
   );
 
   const paidOrders = filteredOrders.filter((o) => o.openValue <= 0 && o.totalValue > 0);

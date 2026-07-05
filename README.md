@@ -692,3 +692,69 @@ Se no futuro você quiser voltar pro tema escuro ou criar um modo com os
 dois, a estrutura já está pronta pra isso — é só trocar os valores de volta
 em `tailwind.config.js` (ou, para os dois ao mesmo tempo, isso exigiria uma
 implementação nova de alternância de tema, que posso fazer se quiser).
+
+## Correção: menu recolhido no celular ficava com espaço em branco
+
+Bug real encontrado pelo usuário: ao tocar em "Recolher menu" (função pensada
+só para computador, onde o menu fica sempre visível do lado), a gaveta do
+celular ficava só com os ícones, mas o painel continuava com a largura
+cheia — sobrava um espaço em branco enorme do lado, e só fechava tocando
+fora. Corrigido: agora os textos do menu (nomes dos itens, "Diamond Sect",
+usuário logado) sempre aparecem no celular, não importa o estado de
+"recolhido" — esse estado só pode afetar a versão de computador. Também
+adicionei uma segurança extra: abrir o menu no celular sempre garante que
+ele abre "expandido", nunca preso num estado recolhido de uma sessão anterior.
+
+## Correção: campos numéricos com "0" preso e difícil de apagar
+
+Bug real de UX: campos como Desconto, Acréscimo, Crédito usado (no pedido),
+Valor pago, valor de custo/aluguel/venda (produto), saldo do caixa e valor de
+despesa mostravam um "0" fixo que era difícil de apagar — ao tentar limpar o
+campo pra digitar um valor novo, ele sempre voltava pra "0" sozinho, e digitar
+sem apagar primeiro grudava o número novo do lado do zero.
+
+Duas correções:
+- **Geral, em todo o sistema:** qualquer campo numérico agora seleciona o
+  conteúdo inteiro assim que você clica nele — então digitar já substitui o
+  valor anterior direto, sem precisar apagar na mão primeiro.
+- **Nos campos específicos apontados** (Desconto, Acréscimo, Crédito usado,
+  Valor pago, valores de produto, saldo de caixa, valor de despesa): agora
+  começam realmente em branco, e só mostram "0" como dica cinza (placeholder)
+  até você digitar algo — não como um valor de verdade que precisa ser
+  apagado.
+
+## Pedido cancelado: selo vermelho fixo, sem como reverter
+
+- A opção "Cancelado" já não aparecia no seletor comum de status (só dá pra
+  cancelar pelo fluxo com senha de administrador/gerente) — mas isso deixava
+  um bug visual: quando um pedido já estava cancelado, o seletor ficava sem
+  nenhuma opção correspondente selecionada, mostrando o primeiro status da
+  lista por engano (dava a entender que o pedido não estava mais cancelado).
+- Corrigido: pedidos cancelados agora mostram um selo vermelho fixo escrito
+  "Cancelado" na listagem, no lugar do seletor — sem select, sem dropdown,
+  sem nenhuma forma de mudar para outro status. A única maneira de reverter
+  seria criar um pedido novo; não existe "descancelar".
+
+## Pedido cancelado não conta mais em NENHUM valor do sistema
+
+Pedido cancelado agora é tratado como "sem fundamento" para fins de dinheiro
+em todo lugar que soma valores:
+
+- **Dashboard:** "Valor recebido" e "Valor em aberto" não incluem mais
+  pedidos cancelados.
+- **Financeiro:** receita de hoje/semana/mês/ano, valor recebido total,
+  gráfico de receita diária e o gráfico de formas de pagamento — todos
+  ignoram pagamentos que pertencem a um pedido cancelado (antes, esses
+  valores eram somados direto da lista de pagamentos, sem checar se o
+  pedido ainda era válido).
+- **Caixa:** o saldo do dia não soma mais pagamentos de pedidos cancelados.
+- **Despesas:** o "lucro real do mês" (recebido − despesas) também não
+  conta mais esses pagamentos.
+- **Relatórios:** pedidos cancelados somem dos totais e da listagem por
+  padrão — a única forma de vê-los é filtrando explicitamente por
+  "Status do pedido = Cancelado", para quem precisar auditar depois.
+
+Importante: os pagamentos em si **não são apagados** do banco (continuam
+existindo no histórico do pedido, em "Pagamentos", e nos Logs, pra manter
+rastreabilidade) — eles só deixam de contar nas somas e telas financeiras
+gerais, exatamente como pedido.

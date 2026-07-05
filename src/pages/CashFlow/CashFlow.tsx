@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { CashFlowService } from "../../services/CashFlowService";
 import { PaymentService } from "../../services/PaymentService";
-import { CashRegister, Payment } from "../../types";
+import { OrderService } from "../../services/OrderService";
+import { CashRegister, Order, Payment } from "../../types";
 import { Modal } from "../../components/Modal";
 import { useAuth } from "../../hooks/useAuth";
 
@@ -14,6 +15,7 @@ export default function CashFlow() {
   const [dateId, setDateId] = useState(CashFlowService.todayId());
   const [reg, setReg] = useState<CashRegister | null>(null);
   const [payments, setPayments] = useState<Payment[]>([]);
+  const [orders, setOrders] = useState<Order[]>([]);
   const [openModal, setOpenModal] = useState(false);
   const [closeModal, setCloseModal] = useState(false);
   const [entryModal, setEntryModal] = useState<"entrada" | "saida" | "sangria" | null>(null);
@@ -26,11 +28,18 @@ export default function CashFlow() {
 
   useEffect(() => CashFlowService.subscribeDay(dateId, setReg), [dateId]);
   useEffect(() => PaymentService.subscribeAll(setPayments), []);
+  useEffect(() => OrderService.subscribeAll(setOrders), []);
 
-  const systemInflow = useMemo(() => payments.filter((p) => p.date === dateId).reduce((s, p) => s + p.amount, 0), [
-    payments,
-    dateId,
-  ]);
+  // Pagamento de pedido cancelado não deve entrar no saldo do caixa — como
+  // se o pedido nunca tivesse existido para fins de valor.
+  const cancelledOrderIds = useMemo(() => new Set(orders.filter((o) => o.status === "cancelado").map((o) => o.id)), [orders]);
+  const systemInflow = useMemo(
+    () =>
+      payments
+        .filter((p) => p.date === dateId && !cancelledOrderIds.has(p.orderId))
+        .reduce((s, p) => s + p.amount, 0),
+    [payments, dateId, cancelledOrderIds]
+  );
 
   const summary = reg ? CashFlowService.computeBalance(reg, systemInflow) : null;
 
@@ -188,7 +197,7 @@ export default function CashFlow() {
         <form onSubmit={handleOpen} className="space-y-4">
           <div>
             <label>Saldo inicial (R$)</label>
-            <input type="number" step="0.01" value={openingBalance} onChange={(e) => setOpeningBalance(Number(e.target.value))} />
+            <input type="number" step="0.01" value={openingBalance || ""} onChange={(e) => setOpeningBalance(Number(e.target.value))} placeholder="0" />
           </div>
           {error && <p className="text-sm text-danger">{error}</p>}
           <div className="flex justify-end gap-2">
@@ -240,7 +249,7 @@ export default function CashFlow() {
           </div>
           <div>
             <label>Valor (R$)</label>
-            <input type="number" step="0.01" required value={entryAmount} onChange={(e) => setEntryAmount(Number(e.target.value))} />
+            <input type="number" step="0.01" required value={entryAmount || ""} onChange={(e) => setEntryAmount(Number(e.target.value))} placeholder="0" />
           </div>
           {error && <p className="text-sm text-danger">{error}</p>}
           <div className="flex justify-end gap-2">

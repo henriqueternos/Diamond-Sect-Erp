@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { ExpenseService } from "../../services/ExpenseService";
 import { PaymentService } from "../../services/PaymentService";
-import { Expense, ExpenseCategory, EXPENSE_CATEGORY_LABELS, Payment } from "../../types";
+import { OrderService } from "../../services/OrderService";
+import { Expense, ExpenseCategory, EXPENSE_CATEGORY_LABELS, Order, Payment } from "../../types";
 import { Modal, ConfirmDialog } from "../../components/Modal";
 import { useAuth } from "../../hooks/useAuth";
 
@@ -20,6 +21,7 @@ export default function Expenses() {
   const { can } = useAuth();
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
+  const [orders, setOrders] = useState<Order[]>([]);
   const [modalOpen, setModalOpen] = useState(false);
   const [form, setForm] = useState(EMPTY);
   const [editing, setEditing] = useState<Expense | null>(null);
@@ -28,12 +30,19 @@ export default function Expenses() {
 
   useEffect(() => ExpenseService.subscribeAll(setExpenses), []);
   useEffect(() => PaymentService.subscribeAll(setPayments), []);
+  useEffect(() => OrderService.subscribeAll(setOrders), []);
 
   const filtered = useMemo(() => expenses.filter((e) => e.date.startsWith(monthFilter)), [expenses, monthFilter]);
   const totalMonth = filtered.reduce((s, e) => s + e.amount, 0);
+  // Pagamento de pedido cancelado não entra no lucro real — como se o
+  // pedido nunca tivesse existido para fins de valor.
+  const cancelledOrderIds = useMemo(() => new Set(orders.filter((o) => o.status === "cancelado").map((o) => o.id)), [orders]);
   const revenueMonth = useMemo(
-    () => payments.filter((p) => p.date.startsWith(monthFilter)).reduce((s, p) => s + p.amount, 0),
-    [payments, monthFilter]
+    () =>
+      payments
+        .filter((p) => p.date.startsWith(monthFilter) && !cancelledOrderIds.has(p.orderId))
+        .reduce((s, p) => s + p.amount, 0),
+    [payments, monthFilter, cancelledOrderIds]
   );
   const realProfit = revenueMonth - totalMonth;
 
@@ -174,8 +183,9 @@ export default function Expenses() {
                 type="number"
                 step="0.01"
                 required
-                value={form.amount}
+                value={form.amount || ""}
                 onChange={(e) => setForm({ ...form, amount: Number(e.target.value) })}
+                placeholder="0"
               />
             </div>
             <div>

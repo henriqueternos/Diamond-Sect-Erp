@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect } from "react";
 import { HashRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "./contexts/AuthContext";
 import { ProtectedRoute } from "./components/ProtectedRoute";
@@ -18,6 +18,20 @@ import PickingList from "./pages/PickingList/PickingList";
 import LogsPage from "./pages/Logs/LogsPage";
 
 export default function App() {
+  // Em qualquer campo numérico do sistema, selecionar o conteúdo ao focar —
+  // assim, digitar direto já substitui o "0" (ou qualquer valor) que estava
+  // ali, em vez de grudar o número novo do lado do antigo.
+  useEffect(() => {
+    function handleFocusIn(e: FocusEvent) {
+      const target = e.target as HTMLElement;
+      if (target instanceof HTMLInputElement && target.type === "number") {
+        target.select();
+      }
+    }
+    document.addEventListener("focusin", handleFocusIn);
+    return () => document.removeEventListener("focusin", handleFocusIn);
+  }, []);
+
   return (
     <AuthProvider>
       {/* HashRouter evita configuração extra de servidor no GitHub Pages */}

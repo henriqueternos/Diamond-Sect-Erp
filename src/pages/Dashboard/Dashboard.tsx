@@ -35,8 +35,11 @@ export default function Dashboard() {
   const retiradaPendente = activeOrders.filter((o) => !["retirado", "devolvido"].includes(o.status));
   const devolucaoPendente = activeOrders.filter((o) => o.status === "retirado");
 
-  const openBalance = orders.reduce((sum, o) => sum + (o.openValue || 0), 0);
-  const receivedTotal = orders.reduce((sum, o) => sum + (o.amountPaid || 0), 0);
+  // Pedido cancelado não deve contar em nenhum total financeiro — como se
+  // ele nunca tivesse existido para fins de valores.
+  const moneyOrders = orders.filter((o) => o.status !== "cancelado");
+  const openBalance = moneyOrders.reduce((sum, o) => sum + (o.openValue || 0), 0);
+  const receivedTotal = moneyOrders.reduce((sum, o) => sum + (o.amountPaid || 0), 0);
 
   const recentOrders = orders.slice(0, 6);
 

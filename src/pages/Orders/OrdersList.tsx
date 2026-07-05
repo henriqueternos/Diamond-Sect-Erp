@@ -387,18 +387,24 @@ export default function OrdersList() {
                 <td>{o.clientName}</td>
                 <td className="capitalize">{o.type}</td>
                 <td>
-                  <select
-                    value={o.status}
-                    onChange={(e) => handleStatusChange(o, e.target.value as OrderStatus)}
-                    className="!py-1 !text-xs"
-                    disabled={!can("orders", "edit")}
-                  >
-                    {CHANGEABLE_ORDER_STATUSES.map(([k, v]) => (
-                      <option key={k} value={k}>
-                        {v}
-                      </option>
-                    ))}
-                  </select>
+                  {o.status === "cancelado" ? (
+                    <span className="badge bg-danger/15 text-danger" title="Pedido cancelado — ação definitiva, não pode ser revertida.">
+                      Cancelado
+                    </span>
+                  ) : (
+                    <select
+                      value={o.status}
+                      onChange={(e) => handleStatusChange(o, e.target.value as OrderStatus)}
+                      className="!py-1 !text-xs"
+                      disabled={!can("orders", "edit")}
+                    >
+                      {CHANGEABLE_ORDER_STATUSES.map(([k, v]) => (
+                        <option key={k} value={k}>
+                          {v}
+                        </option>
+                      ))}
+                    </select>
+                  )}
                 </td>
                 <td>{dateBR(o.pickupDate)}</td>
                 <td>{dateBR(o.returnDate)}</td>
@@ -624,8 +630,9 @@ export default function OrdersList() {
                   step="0.01"
                   min={0.01}
                   required
-                  value={paymentAmount}
+                  value={paymentAmount || ""}
                   onChange={(e) => setPaymentAmount(Number(e.target.value))}
+                  placeholder="0"
                 />
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

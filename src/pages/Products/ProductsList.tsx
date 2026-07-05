@@ -312,15 +312,15 @@ export default function ProductsList() {
 
           <div>
             <label>Valor de custo (R$)</label>
-            <input type="number" step="0.01" value={form.costValue} onChange={(e) => update("costValue", Number(e.target.value))} />
+            <input type="number" step="0.01" value={form.costValue || ""} onChange={(e) => update("costValue", Number(e.target.value))} placeholder="0" />
           </div>
           <div>
             <label>Valor de aluguel (R$)</label>
-            <input type="number" step="0.01" value={form.rentValue} onChange={(e) => update("rentValue", Number(e.target.value))} />
+            <input type="number" step="0.01" value={form.rentValue || ""} onChange={(e) => update("rentValue", Number(e.target.value))} placeholder="0" />
           </div>
           <div>
             <label>Valor de venda (R$)</label>
-            <input type="number" step="0.01" value={form.saleValue} onChange={(e) => update("saleValue", Number(e.target.value))} />
+            <input type="number" step="0.01" value={form.saleValue || ""} onChange={(e) => update("saleValue", Number(e.target.value))} placeholder="0" />
           </div>
 
           <div>
