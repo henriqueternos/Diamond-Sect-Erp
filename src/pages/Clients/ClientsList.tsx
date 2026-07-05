@@ -45,7 +45,7 @@ async function fetchAddressByCep(cep: string): Promise<{ address: string; neighb
 }
 
 export default function ClientsList() {
-  const { can } = useAuth();
+  const { can, user } = useAuth();
   const [clients, setClients] = useState<Client[]>([]);
   const [searchParams] = useSearchParams();
   const [term, setTerm] = useState(searchParams.get("buscar") || "");
@@ -58,6 +58,11 @@ export default function ClientsList() {
   const [formError, setFormError] = useState<string | null>(null);
   const [creditHistory, setCreditHistory] = useState<CustomerCreditEntry[]>([]);
   const [cepStatus, setCepStatus] = useState<"idle" | "loading" | "not_found" | "error">("idle");
+  const [adjustCreditOpen, setAdjustCreditOpen] = useState(false);
+  const [adjustCreditAmount, setAdjustCreditAmount] = useState(0);
+  const [adjustCreditReason, setAdjustCreditReason] = useState("");
+  const [adjustCreditSaving, setAdjustCreditSaving] = useState(false);
+  const [adjustCreditError, setAdjustCreditError] = useState<string | null>(null);
 
   useEffect(() => ClientService.subscribeAll(setClients), []);
 
@@ -104,6 +109,10 @@ export default function ClientsList() {
   }, [editing]);
 
   const filtered = useMemo(() => ClientService.search(clients, term), [clients, term]);
+  const liveEditingClient = useMemo(() => (editing ? clients.find((c) => c.id === editing.id) || editing : null), [
+    clients,
+    editing,
+  ]);
 
   function openCreate() {
     setEditing(null);
@@ -154,6 +163,28 @@ export default function ClientsList() {
     if (!toDelete) return;
     await ClientService.remove(toDelete.id);
     setToDelete(null);
+  }
+
+  async function handleAdjustCredit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!editing || adjustCreditAmount === 0) return;
+    setAdjustCreditSaving(true);
+    setAdjustCreditError(null);
+    try {
+      await CustomerCreditService.adjust(
+        editing.id,
+        adjustCreditAmount,
+        adjustCreditReason.trim() || "Ajuste manual",
+        { id: user!.id, name: user!.name }
+      );
+      setAdjustCreditOpen(false);
+      setAdjustCreditAmount(0);
+      setAdjustCreditReason("");
+    } catch (err: any) {
+      setAdjustCreditError(err.message || "Erro ao ajustar crédito.");
+    } finally {
+      setAdjustCreditSaving(false);
+    }
   }
 
   function update<K extends keyof typeof form>(key: K, value: (typeof form)[K]) {
@@ -315,12 +346,27 @@ export default function ClientsList() {
           </div>
           <div>
             <label>Crédito disponível (R$)</label>
-            <input
-              type="number"
-              step="0.01"
-              value={form.availableCredit}
-              onChange={(e) => update("availableCredit", Number(e.target.value))}
-            />
+            {editing ? (
+              <div className="flex items-center gap-2">
+                <input type="number" value={liveEditingClient?.availableCredit ?? form.availableCredit} disabled className="opacity-60" />
+                <button type="button" className="btn-secondary !py-2 shrink-0" onClick={() => setAdjustCreditOpen(true)}>
+                  Ajustar
+                </button>
+              </div>
+            ) : (
+              <input
+                type="number"
+                step="0.01"
+                value={form.availableCredit || ""}
+                onChange={(e) => update("availableCredit", Number(e.target.value))}
+                placeholder="0"
+              />
+            )}
+            {editing && (
+              <p className="text-[11px] text-mist-700 mt-1">
+                Não editável direto — use "Ajustar" para que o motivo fique registrado no histórico de crédito.
+              </p>
+            )}
           </div>
           <div className="md:col-span-2">
             <label>URL da foto (opcional)</label>
@@ -366,6 +412,43 @@ export default function ClientsList() {
             </button>
             <button type="submit" className="btn-primary" disabled={saving}>
               {saving ? "Salvando..." : "Salvar cliente"}
+            </button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Ajustar crédito (fica registrado no histórico) */}
+      <Modal open={adjustCreditOpen} onClose={() => setAdjustCreditOpen(false)} title={`Ajustar crédito — ${editing?.fullName ?? ""}`}>
+        <form onSubmit={handleAdjustCredit} className="space-y-4">
+          <p className="text-sm text-mist-500">
+            Saldo atual: {(liveEditingClient?.availableCredit ?? 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+          </p>
+          <div>
+            <label>Valor do ajuste (R$)</label>
+            <input
+              type="number"
+              step="0.01"
+              value={adjustCreditAmount || ""}
+              onChange={(e) => setAdjustCreditAmount(Number(e.target.value))}
+              placeholder="Positivo para conceder, negativo para remover"
+            />
+            <p className="text-[11px] text-mist-700 mt-1">Use valor positivo para conceder crédito, negativo para remover.</p>
+          </div>
+          <div>
+            <label>Motivo</label>
+            <input
+              value={adjustCreditReason}
+              onChange={(e) => setAdjustCreditReason(e.target.value)}
+              placeholder="Ex: crédito de cortesia, correção de cadastro..."
+            />
+          </div>
+          {adjustCreditError && <p className="text-sm text-danger">{adjustCreditError}</p>}
+          <div className="flex justify-end gap-2">
+            <button type="button" className="btn-secondary" onClick={() => setAdjustCreditOpen(false)}>
+              Cancelar
+            </button>
+            <button type="submit" className="btn-primary" disabled={adjustCreditSaving || adjustCreditAmount === 0}>
+              {adjustCreditSaving ? "Salvando..." : "Confirmar ajuste"}
             </button>
           </div>
         </form>

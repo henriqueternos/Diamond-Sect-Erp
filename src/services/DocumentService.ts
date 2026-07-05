@@ -13,7 +13,7 @@ function dateBR(v?: string) {
 /** ---------------- HTML (para "Visualizar" e "Imprimir") ---------------- */
 
 const BASE_STYLE = `
-  body { font-family: 'Georgia', 'Times New Roman', serif; color: #1a1a1a; padding: 40px; max-width: 780px; margin: 0 auto; }
+  body { font-family: 'Times New Roman', Times, serif; color: #1a1a1a; padding: 40px; max-width: 780px; margin: 0 auto; }
   h1 { font-size: 20px; letter-spacing: 1px; text-align: center; margin-bottom: 4px; }
   .subtitle { text-align: center; color: #555; margin-bottom: 28px; font-size: 13px; }
   h2 { font-size: 14px; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid #ccc; padding-bottom: 4px; margin-top: 24px; }

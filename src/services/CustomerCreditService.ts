@@ -34,7 +34,13 @@ export const CustomerCreditService = {
       const snap = await tx.get(clientRef);
       if (!snap.exists()) throw new Error("Cliente não encontrado.");
       const current = snap.data() as Client;
-      balanceAfter = Math.max((current.availableCredit || 0) + delta, 0);
+      const rawBalance = (current.availableCredit || 0) + delta;
+      if (rawBalance < 0) {
+        throw new Error(
+          "Crédito insuficiente no momento do lançamento — o saldo pode ter mudado nesse instante (outro pedido usando o mesmo crédito). Atualize a tela e confira o saldo antes de tentar de novo."
+        );
+      }
+      balanceAfter = rawBalance;
       tx.update(clientRef, { availableCredit: balanceAfter, updatedAt: serverTimestamp() });
     });
 

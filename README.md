@@ -758,3 +758,63 @@ Importante: os pagamentos em si **não são apagados** do banco (continuam
 existindo no histórico do pedido, em "Pagamentos", e nos Logs, pra manter
 rastreabilidade) — eles só deixam de contar nas somas e telas financeiras
 gerais, exatamente como pedido.
+
+## Correção: PDFs e documentos impressos com fonte diferente do resto do sistema
+
+Boa pergunta do usuário revelou uma inconsistência real: contrato, retirada
+e pedido interno (tanto na tela de "Visualizar/Imprimir" quanto no PDF
+baixado) ainda usavam uma fonte serifada tradicional (Georgia/Times) — um
+estilo de "papel formal" que fazia sentido antes, mas ficou destoante depois
+da troca do sistema para uma fonte sem serifa (Manrope). Os Relatórios e a
+Lista de separação já usavam sem serifa (Helvetica).
+
+Corrigido: contrato, retirada e pedido interno agora usam a mesma família
+sem serifa (Helvetica) em tudo — visualização em tela, impressão e PDF —
+ficando visualmente alinhados com o restante do ERP e com os outros
+documentos exportáveis. O PDF usa a fonte "Helvetica" nativa do gerador de
+PDF (a mais próxima disponível de uma fonte sem serifa limpa, já que
+incorporar a fonte exata do sistema, Manrope, dentro do PDF exigiria embutir
+o arquivo da fonte separadamente).
+
+## Fonte dos documentos: Times New Roman (formal/jurídica)
+
+Depois de ver um comparativo visual, a decisão final foi manter a fonte
+tradicional de documento formal — **Times New Roman** — no contrato, na
+retirada e no pedido interno (tela e PDF). Relatórios e Lista de separação
+continuam em Helvetica (sem serifa), já que são ferramentas internas de
+operação, não documentos jurídicos.
+
+## Auditoria completa do sistema (revisão minuciosa)
+
+Fiz uma varredura detalhada em todo o código, arquivo por arquivo. Encontrei
+e corrigi **8 problemas reais**:
+
+1. **Trocar o cliente durante a edição de um pedido corrompia o crédito.**
+   O formulário de editar pedido deixava o campo "Cliente" livre para trocar,
+   mas o ajuste de crédito usava o cliente *novo* em vez do original — o
+   cliente certo nunca recebia o estorno, e o errado seria debitado. Campo
+   "Cliente" agora é travado na edição.
+2. **Saldo de crédito podia "zerar" silenciosamente.** Se dois lançamentos
+   de crédito acontecessem quase juntos, o sistema simplesmente forçava o
+   saldo pra 0 sem avisar. Agora gera um erro visível em vez de mascarar.
+3. **Botão de cancelar pedido aparecia pra qualquer usuário**, sem checar
+   permissão (a senha de aprovação ainda protegia a ação de verdade, mas o
+   botão não devia nem aparecer). Corrigido para respeitar a mesma permissão
+   dos outros botões sensíveis do mesmo menu.
+4. **Modal de "Mover estoque" e painel de "Disponibilidade"** mostravam
+   números congelados do momento em que abriram, em vez de atualizar ao
+   vivo — corrigido, mesmo padrão já usado no modal de pagamentos.
+5. **Excluir produto não avisava se ele estava em pedidos ativos.** Agora
+   mostra um aviso antes de confirmar.
+6. **Crédito do cliente podia ser editado direto no cadastro**, sem passar
+   pelo histórico — criava mudanças de saldo sem nenhum registro do motivo.
+   Agora só é editável na criação do cliente; em cliente já existente, vira
+   somente leitura + botão "Ajustar" que registra o motivo no histórico.
+7. **Fórmula de valor em aberto duplicada sem proteção** dentro do
+   `PaymentService` (lançar/excluir pagamento) — se um pedido antigo não
+   tivesse `discount`/`surcharge`/`creditUsed` preenchidos, o cálculo
+   quebraria. Adicionadas as mesmas proteções já usadas em outros lugares.
+8. Conferidos e confirmados corretos: todos os cálculos de Dashboard,
+   Financeiro, Caixa e Despesas já excluíam pedidos cancelados e seus
+   pagamentos; nenhuma consulta exige índice composto; nenhuma escrita de
+   campo `undefined` no Firestore restante além dos casos já sanitizados.

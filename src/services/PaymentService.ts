@@ -60,7 +60,7 @@ export const PaymentService = {
 
       const newAmountPaid = (current.amountPaid || 0) + data.amount;
       const newOpenValue = Math.max(
-        current.totalValue - current.discount + current.surcharge - current.creditUsed - newAmountPaid,
+        (current.totalValue || 0) - (current.discount || 0) + (current.surcharge || 0) - (current.creditUsed || 0) - newAmountPaid,
         0
       );
 
@@ -147,7 +147,7 @@ export const PaymentService = {
 
         const newAmountPaid = Math.max((current.amountPaid || 0) - payment.amount, 0);
         const newOpenValue = Math.max(
-          current.totalValue - current.discount + current.surcharge - current.creditUsed - newAmountPaid,
+          (current.totalValue || 0) - (current.discount || 0) + (current.surcharge || 0) - (current.creditUsed || 0) - newAmountPaid,
           0
         );
 

@@ -290,7 +290,7 @@ export function OrderForm({
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="md:col-span-2">
           <label>Cliente *</label>
-          <select value={clientId} onChange={(e) => setClientId(e.target.value)} required>
+          <select value={clientId} onChange={(e) => setClientId(e.target.value)} required disabled={isEdit}>
             <option value="">Selecione um cliente...</option>
             {clients.map((c) => (
               <option key={c.id} value={c.id}>
@@ -298,7 +298,13 @@ export function OrderForm({
               </option>
             ))}
           </select>
-          {client && (
+          {isEdit && (
+            <p className="text-[11px] text-mist-500 mt-1">
+              O cliente não pode ser trocado num pedido já criado (isso protegeria o histórico e o crédito da pessoa
+              errada). Cancele e crie um novo pedido se precisar mudar o cliente.
+            </p>
+          )}
+          {client && !isEdit && (
             <p className="text-xs text-mist-500 mt-1">
               {client.phone} · Crédito disponível:{" "}
               {client.availableCredit.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}

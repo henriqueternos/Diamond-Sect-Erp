@@ -559,13 +559,17 @@ export default function OrdersList() {
               </>
             )}
 
-            <div className="border-t border-ink-600 my-2" />
-            <button
-              className="w-full text-left px-3 py-2 rounded-lg hover:bg-danger/10 text-sm text-danger"
-              onClick={() => openCancelApproval(menuOrder)}
-            >
-              Excluir pedido (cancelar)
-            </button>
+            {can("orders", "edit") && (
+              <>
+                <div className="border-t border-ink-600 my-2" />
+                <button
+                  className="w-full text-left px-3 py-2 rounded-lg hover:bg-danger/10 text-sm text-danger"
+                  onClick={() => openCancelApproval(menuOrder)}
+                >
+                  Excluir pedido (cancelar)
+                </button>
+              </>
+            )}
           </div>
         )}
       </Modal>

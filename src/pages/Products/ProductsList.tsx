@@ -74,6 +74,14 @@ export default function ProductsList() {
   useEffect(() => OrderService.subscribeAll(setOrders), []);
 
   const filtered = useMemo(() => ProductService.search(products, term), [products, term]);
+  const liveMoveProduct = useMemo(
+    () => (moveProduct ? products.find((p) => p.id === moveProduct.id) || moveProduct : null),
+    [products, moveProduct]
+  );
+  const liveAvailabilityProduct = useMemo(
+    () => (availabilityProduct ? products.find((p) => p.id === availabilityProduct.id) || availabilityProduct : null),
+    [products, availabilityProduct]
+  );
 
   function openCreate() {
     setEditing(null);
@@ -136,6 +144,11 @@ export default function ProductsList() {
       setMoveSaving(false);
     }
   }
+
+  const productInUseCount = toDelete
+    ? orders.filter((o) => !["cancelado", "devolvido", "finalizado"].includes(o.status) && o.items.some((i) => i.productId === toDelete.id))
+        .length
+    : 0;
 
   async function handleDelete() {
     if (!toDelete) return;
@@ -372,16 +385,16 @@ export default function ProductsList() {
           <div className="grid grid-cols-3 gap-3 text-sm">
             <div className="card p-3">
               <p className="text-mist-500 text-xs">Total</p>
-              <p className="text-xl">{availabilityProduct?.totalQuantity}</p>
+              <p className="text-xl">{liveAvailabilityProduct?.totalQuantity}</p>
             </div>
             <div className="card p-3">
               <p className="text-mist-500 text-xs">Disponível</p>
-              <p className="text-xl text-success">{availabilityProduct?.availableQuantity}</p>
+              <p className="text-xl text-success">{liveAvailabilityProduct?.availableQuantity}</p>
             </div>
             <div className="card p-3">
               <p className="text-mist-500 text-xs">Comprometido</p>
               <p className="text-xl text-warn">
-                {(availabilityProduct?.totalQuantity ?? 0) - (availabilityProduct?.availableQuantity ?? 0)}
+                {(liveAvailabilityProduct?.totalQuantity ?? 0) - (liveAvailabilityProduct?.availableQuantity ?? 0)}
               </p>
             </div>
           </div>
@@ -434,7 +447,7 @@ export default function ProductsList() {
 
       {/* Mover estoque manualmente (disponível/lavanderia/manutenção/indisponível) */}
       <Modal open={Boolean(moveProduct)} onClose={() => setMoveProduct(null)} title={`Mover estoque — ${moveProduct?.name ?? ""}`}>
-        {moveProduct && (
+        {liveMoveProduct && (
           <form onSubmit={handleMove} className="space-y-4">
             <p className="text-xs text-mist-500">
               Use para registrar produto que foi para a lavanderia, para manutenção, ou voltou a ficar disponível. As
@@ -444,7 +457,7 @@ export default function ProductsList() {
               {(["availableQuantity", "laundryQuantity", "maintenanceQuantity", "unavailableQuantity"] as const).map((k) => (
                 <div key={k} className="card p-2 text-center">
                   <p className="text-[10px] text-mist-500">{MOVE_BUCKET_LABELS[k]}</p>
-                  <p className="text-lg font-display">{moveProduct[k]}</p>
+                  <p className="text-lg font-display">{liveMoveProduct[k]}</p>
                 </div>
               ))}
             </div>
@@ -490,7 +503,11 @@ export default function ProductsList() {
       <ConfirmDialog
         open={Boolean(toDelete)}
         title="Excluir produto"
-        message={`Tem certeza que deseja excluir "${toDelete?.name}"?`}
+        message={
+          productInUseCount > 0
+            ? `Atenção: "${toDelete?.name}" está em ${productInUseCount} pedido(s) ativo(s) no momento. Excluir mesmo assim pode deixar esses pedidos com uma peça "fantasma". Tem certeza?`
+            : `Tem certeza que deseja excluir "${toDelete?.name}"?`
+        }
         onConfirm={handleDelete}
         onCancel={() => setToDelete(null)}
         danger
