@@ -1,5 +1,12 @@
 name: Publicar no GitHub Pages
 
+# Builda o projeto e publica o resultado (pasta dist/) direto na branch
+# gh-pages. Esse método (publicar numa branch) é mais simples e estável do
+# que o sistema mais novo de "Deployments" do GitHub, que nesse projeto
+# ficou travando com "Deployment failed, try again later" mesmo com tudo
+# configurado certo — provavelmente por causa de um estado antigo, de antes
+# da troca de "Deploy from a branch" para "GitHub Actions".
+
 on:
   push:
     branches: ["main"]
