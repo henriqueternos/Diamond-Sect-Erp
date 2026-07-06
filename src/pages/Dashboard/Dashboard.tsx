@@ -159,39 +159,41 @@ export default function Dashboard() {
             Ver todos →
           </button>
         </div>
-        <table className="table-shell">
-          <thead>
-            <tr>
-              <th>Pedido</th>
-              <th>Cliente</th>
-              <th>Tipo</th>
-              <th>Status</th>
-              <th>Valor total</th>
-              <th>Em aberto</th>
-            </tr>
-          </thead>
-          <tbody>
-            {recentOrders.map((o) => (
-              <tr key={o.id} className="cursor-pointer" onClick={() => navigate("/pedidos")}>
-                <td className="text-diamond">{o.orderNumber}</td>
-                <td>{o.clientName}</td>
-                <td className="capitalize">{o.type}</td>
-                <td>
-                  <OrderStatusBadge status={o.status} />
-                </td>
-                <td>{o.totalValue.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</td>
-                <td>{o.openValue.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</td>
-              </tr>
-            ))}
-            {recentOrders.length === 0 && (
+        <div className="overflow-x-auto">
+          <table className="table-shell">
+            <thead>
               <tr>
-                <td colSpan={6} className="text-center text-mist-500 py-6">
-                  Nenhum pedido cadastrado ainda.
-                </td>
+                <th>Pedido</th>
+                <th>Cliente</th>
+                <th>Tipo</th>
+                <th>Status</th>
+                <th>Valor total</th>
+                <th>Em aberto</th>
               </tr>
-            )}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {recentOrders.map((o) => (
+                <tr key={o.id} className="cursor-pointer" onClick={() => navigate("/pedidos")}>
+                  <td className="text-diamond">{o.orderNumber}</td>
+                  <td>{o.clientName}</td>
+                  <td className="capitalize">{o.type}</td>
+                  <td>
+                    <OrderStatusBadge status={o.status} />
+                  </td>
+                  <td>{o.totalValue.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</td>
+                  <td>{o.openValue.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</td>
+                </tr>
+              ))}
+              {recentOrders.length === 0 && (
+                <tr>
+                  <td colSpan={6} className="text-center text-mist-500 py-6">
+                    Nenhum pedido cadastrado ainda.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );

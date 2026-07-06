@@ -72,7 +72,14 @@ export default function App() {
                 </ProtectedRoute>
               }
             />
-            <Route path="configuracoes" element={<Settings />} />
+            <Route
+              path="configuracoes"
+              element={
+                <ProtectedRoute requiredModule="settings">
+                  <Settings />
+                </ProtectedRoute>
+              }
+            />
             <Route
               path="financeiro"
               element={

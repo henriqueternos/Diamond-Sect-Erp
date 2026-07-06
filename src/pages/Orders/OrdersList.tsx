@@ -592,6 +592,7 @@ export default function OrdersList() {
                 Valor em aberto atual: <span className="text-warn font-semibold">{money(livePaymentOrder.openValue)}</span>
               </p>
               {orderPayments.length > 0 ? (
+                <div className="overflow-x-auto">
                 <table className="table-shell">
                   <thead>
                     <tr>
@@ -620,6 +621,7 @@ export default function OrdersList() {
                     ))}
                   </tbody>
                 </table>
+                </div>
               ) : (
                 <p className="text-xs text-mist-500">Nenhum pagamento lançado ainda para este pedido.</p>
               )}

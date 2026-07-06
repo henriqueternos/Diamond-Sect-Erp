@@ -15,7 +15,10 @@ export default function LogsPage() {
   const [term, setTerm] = useState("");
   const [moduleFilter, setModuleFilter] = useState("");
 
-  useEffect(() => LogService.subscribeRecent(setLogs, 300), []);
+  useEffect(() => {
+    if (!isAdmin) return;
+    return LogService.subscribeRecent(setLogs, 300);
+  }, [isAdmin]);
 
   const modules = useMemo(() => [...new Set(logs.map((l) => l.module))], [logs]);
 

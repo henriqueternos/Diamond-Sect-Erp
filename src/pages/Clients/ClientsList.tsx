@@ -149,7 +149,13 @@ export default function ClientsList() {
     setSaving(true);
     try {
       if (editing) {
-        await ClientService.update(editing.id, form);
+        // O crédito não vai junto aqui de propósito: ele só muda através do
+        // botão "Ajustar" (que registra no histórico). Se ele fosse reenviado
+        // com o valor antigo do formulário, salvar qualquer outro campo
+        // desfaria silenciosamente um ajuste de crédito feito durante a
+        // mesma edição.
+        const { availableCredit, ...rest } = form;
+        await ClientService.update(editing.id, rest);
       } else {
         await ClientService.create(form);
       }

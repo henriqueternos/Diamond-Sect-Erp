@@ -818,3 +818,52 @@ e corrigi **8 problemas reais**:
    Financeiro, Caixa e Despesas já excluíam pedidos cancelados e seus
    pagamentos; nenhuma consulta exige índice composto; nenhuma escrita de
    campo `undefined` no Firestore restante além dos casos já sanitizados.
+
+## Correção: tabela "Pedidos recentes" do Dashboard vazando no celular
+
+A tabela de pedidos recentes no Dashboard era a única do sistema sem
+rolagem horizontal própria — em telas estreitas, a última coluna ("Em
+aberto") ficava parcialmente fora do card. Corrigido, e por segurança
+apliquei a mesma proteção (rolagem horizontal) em mais 4 tabelas menores
+dentro de modais (itens do pedido, conflito de disponibilidade, pagamentos
+lançados na criação, histórico de pagamentos do pedido) que tinham o mesmo
+risco em telas bem estreitas.
+
+## Revisão final antes da apresentação — 3 correções importantes de segurança/UX
+
+Última rodada de revisão, focada em segurança de acesso e consistência:
+
+1. **Falha de segurança real: a tela de Configurações (que inclui o
+   cadastro de Funcionários) não tinha nenhuma checagem de permissão na
+   rota** — só exigia estar logado. Qualquer funcionário, mesmo sem
+   nenhuma permissão de "Configurações", conseguiria abrir essa tela
+   digitando o endereço direto. Ela já tinha uma proteção interna (só
+   admin vê o conteúdo), então nenhum dado sensível chegou a vazar, mas
+   agora a rota em si também exige a permissão "settings" corretamente,
+   fechando a brecha por completo e evitando carregar dados à toa.
+2. **Menu lateral mostrava todos os itens pra todo mundo**, mesmo os que a
+   pessoa não tinha permissão de acessar (ex.: um vendedor via
+   "Configurações" e "Financeiro" no menu mesmo sem poder entrar) — clicar
+   levava a uma tela de "sem permissão". Ruim para uma demonstração.
+   Corrigido: o menu agora só mostra os itens que aquele usuário
+   específico realmente pode acessar.
+3. **Tela de Logs buscava os dados do banco mesmo antes de confirmar que
+   quem está vendo é administrador** — a tela escondia o conteúdo
+   corretamente, mas os dados já tinham sido carregados na memória do
+   navegador. Corrigido para só buscar quando a pessoa é confirmadamente
+   admin.
+
+E mais um bug real encontrado durante a revisão do cadastro de clientes:
+salvar qualquer alteração num cliente já existente (nome, telefone, etc.)
+reenviava o **crédito antigo, desatualizado**, desfazendo silenciosamente
+qualquer ajuste de crédito feito durante a mesma sessão de edição.
+Corrigido — o crédito nunca mais é reenviado ao salvar outros campos.
+
+## Status: revisado ponto a ponto, pronto para apresentação
+
+Todos os serviços (Pedidos, Pagamentos, Crédito, Estoque, Clientes,
+Funcionários, Configurações, Autenticação, Financeiro, Caixa, Despesas,
+Relatórios, Agenda, Logs) foram lidos e conferidos linha a linha nesta
+revisão final. Nenhum erro de sintaxe, nenhuma escrita arriscada de campo
+vazio no banco, nenhuma rota sem a proteção correta, nenhum cálculo
+financeiro contando pedido cancelado.

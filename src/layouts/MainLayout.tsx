@@ -5,20 +5,21 @@ import { GlobalSearch } from "../components/GlobalSearch";
 import { NotificationsBell } from "../components/NotificationsBell";
 import { useAuth } from "../hooks/useAuth";
 import { AuthService } from "../services/AuthService";
+import { ModuleKey } from "../types";
 
-const NAV_ITEMS: { to: string; label: string; icon: string }[] = [
-  { to: "/", label: "Dashboard", icon: "◆" },
-  { to: "/agenda", label: "Agenda", icon: "▦" },
-  { to: "/clientes", label: "Clientes", icon: "☺" },
-  { to: "/estoque", label: "Estoque", icon: "▤" },
-  { to: "/pedidos", label: "Pedidos", icon: "▣" },
-  { to: "/financeiro", label: "Financeiro", icon: "$" },
-  { to: "/caixa", label: "Caixa", icon: "▢" },
-  { to: "/despesas", label: "Despesas", icon: "▼" },
-  { to: "/relatorios", label: "Relatórios", icon: "▥" },
+const NAV_ITEMS: { to: string; label: string; icon: string; moduleKey?: ModuleKey; adminOnly?: boolean }[] = [
+  { to: "/", label: "Dashboard", icon: "◆", moduleKey: "dashboard" },
+  { to: "/agenda", label: "Agenda", icon: "▦", moduleKey: "calendar" },
+  { to: "/clientes", label: "Clientes", icon: "☺", moduleKey: "clients" },
+  { to: "/estoque", label: "Estoque", icon: "▤", moduleKey: "products" },
+  { to: "/pedidos", label: "Pedidos", icon: "▣", moduleKey: "orders" },
+  { to: "/financeiro", label: "Financeiro", icon: "$", moduleKey: "financial" },
+  { to: "/caixa", label: "Caixa", icon: "▢", moduleKey: "cashFlow" },
+  { to: "/despesas", label: "Despesas", icon: "▼", moduleKey: "expenses" },
+  { to: "/relatorios", label: "Relatórios", icon: "▥", moduleKey: "reports" },
   { to: "/lista-separacao", label: "Lista de separação", icon: "☰" },
-  { to: "/configuracoes", label: "Configurações", icon: "⚙" },
-  { to: "/logs", label: "Logs", icon: "▧" },
+  { to: "/configuracoes", label: "Configurações", icon: "⚙", moduleKey: "settings" },
+  { to: "/logs", label: "Logs", icon: "▧", adminOnly: true },
 ];
 
 // Breakpoint em que o menu deixa de ser uma gaveta e passa a ficar sempre
@@ -28,10 +29,16 @@ const NAV_ITEMS: { to: string; label: string; icon: string }[] = [
 // disputar espaço com o conteúdo justamente na orientação que mais dava
 // problema.
 export function MainLayout() {
-  const { user } = useAuth();
+  const { user, can, isAdmin } = useAuth();
   const navigate = useNavigate();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+
+  const visibleNavItems = NAV_ITEMS.filter((item) => {
+    if (item.adminOnly) return isAdmin;
+    if (item.moduleKey) return can(item.moduleKey, "view");
+    return true;
+  });
 
   async function handleLogout() {
     await AuthService.logout(user);
@@ -67,7 +74,7 @@ export function MainLayout() {
         </div>
 
         <nav className="flex-1 py-4 px-2 space-y-1 overflow-y-auto overscroll-contain">
-          {NAV_ITEMS.map((item) => (
+          {visibleNavItems.map((item) => (
             <NavLink
               key={item.to}
               to={item.to}

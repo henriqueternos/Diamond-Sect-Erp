@@ -345,6 +345,7 @@ export function OrderForm({
         </div>
 
         {items.length > 0 && (
+          <div className="overflow-x-auto">
           <table className="table-shell">
             <thead>
               <tr>
@@ -373,6 +374,7 @@ export function OrderForm({
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </div>
 
@@ -416,6 +418,7 @@ export function OrderForm({
       {conflicts.length > 0 && (
         <div className="card p-4 border-danger/50 space-y-3">
           <p className="text-danger font-semibold text-sm">⚠ Conflito de disponibilidade encontrado</p>
+          <div className="overflow-x-auto">
           <table className="table-shell">
             <thead>
               <tr>
@@ -444,6 +447,7 @@ export function OrderForm({
               ))}
             </tbody>
           </table>
+          </div>
           <div>
             <label>Motivo (opcional)</label>
             <input value={overrideReason} onChange={(e) => setOverrideReason(e.target.value)} placeholder="Explique por que está liberando mesmo com conflito" />
@@ -514,6 +518,7 @@ export function OrderForm({
           </div>
 
           {payments.length > 0 && (
+            <div className="overflow-x-auto">
             <table className="table-shell">
               <thead>
                 <tr>
@@ -538,6 +543,7 @@ export function OrderForm({
                 ))}
               </tbody>
             </table>
+            </div>
           )}
           <p className="text-xs text-mist-500">
             Combine quantas formas de pagamento precisar (dinheiro + pix + cartão, por exemplo) até completar o valor.
