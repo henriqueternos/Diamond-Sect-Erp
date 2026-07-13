@@ -1,5 +1,5 @@
 import jsPDF from "jspdf";
-import { CompanySettings, DocumentSettings, Order, PAYMENT_METHOD_LABELS } from "../types";
+import { CompanySettings, DocumentSettings, Order, PAYMENT_METHOD_LABELS, CLIENT_CATEGORY_LABELS } from "../types";
 
 function money(v: number) {
   return (v || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -68,6 +68,7 @@ export function buildContractHtml(order: Order, company: CompanySettings, settin
       <div><b>CPF:</b> ${order.clientCpf}</div>
       <div><b>Telefone:</b> ${order.clientPhone}</div>
       <div><b>Tipo:</b> ${order.type === "venda" ? "Venda" : "Locação"}</div>
+      <div><b>Categoria do cliente:</b> ${order.clientCategory ? CLIENT_CATEGORY_LABELS[order.clientCategory] : "—"}</div>
     </div>
 
     <h2>Produtos</h2>
@@ -341,6 +342,7 @@ export function downloadContractPdf(order: Order, company: CompanySettings, sett
   c.row("CPF", order.clientCpf);
   c.row("Telefone", order.clientPhone);
   c.row("Tipo", order.type === "venda" ? "Venda" : "Locação");
+  c.row("Categoria do cliente", order.clientCategory ? CLIENT_CATEGORY_LABELS[order.clientCategory] : "—");
 
   c.h2("Produtos");
   c.tableItems(order.items);

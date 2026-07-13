@@ -13,7 +13,7 @@ import {
   downloadWithdrawalPdf,
   openPrintWindow,
 } from "../../services/DocumentService";
-import { Order, OrderStatus, CHANGEABLE_ORDER_STATUSES, Payment, PaymentMethod, PAYMENT_METHOD_LABELS } from "../../types";
+import { Order, OrderStatus, CHANGEABLE_ORDER_STATUSES, Payment, PaymentMethod, PAYMENT_METHOD_LABELS, CLIENT_CATEGORY_LABELS } from "../../types";
 import { Modal } from "../../components/Modal";
 import { OrderStatusBadge } from "../../components/StatusBadge";
 import { useAuth } from "../../hooks/useAuth";
@@ -443,6 +443,15 @@ export default function OrdersList() {
             <p>
               <span className="text-mist-500">Telefone:</span> {summaryOrder.clientPhone}
             </p>
+            <p>
+              <span className="text-mist-500">Categoria do cliente:</span>{" "}
+              {summaryOrder.clientCategory ? CLIENT_CATEGORY_LABELS[summaryOrder.clientCategory] : "—"}
+            </p>
+            {summaryOrder.clientCategoryNotes && (
+              <p>
+                <span className="text-mist-500">Observações da categoria:</span> {summaryOrder.clientCategoryNotes}
+              </p>
+            )}
             <div>
               <span className="text-mist-500">Produtos:</span>
               <ul className="list-disc list-inside">

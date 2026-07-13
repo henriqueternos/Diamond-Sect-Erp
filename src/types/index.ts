@@ -171,6 +171,15 @@ export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
   credito_cliente: "Crédito do cliente",
 };
 
+export type ClientCategory = "noivo" | "padrinho_madrinha" | "debutante" | "convidado";
+
+export const CLIENT_CATEGORY_LABELS: Record<ClientCategory, string> = {
+  noivo: "Noivo(a)",
+  padrinho_madrinha: "Padrinho/Madrinha",
+  debutante: "Debutante",
+  convidado: "Convidado(a)",
+};
+
 export interface OrderItem {
   productId: string;
   productName: string;
@@ -188,6 +197,9 @@ export interface Order {
   clientPhone: string;
   type: OrderType;
   items: OrderItem[];
+
+  clientCategory: ClientCategory;
+  clientCategoryNotes?: string; // uso interno — nunca aparece no contrato
 
   orderDate: string;
   eventDate?: string;

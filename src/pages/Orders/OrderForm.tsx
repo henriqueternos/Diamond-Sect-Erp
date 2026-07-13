@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Client, Order, OrderItem, OrderType, PaymentMethod, PAYMENT_METHOD_LABELS, Product } from "../../types";
+import { Client, Order, OrderItem, OrderType, PaymentMethod, PAYMENT_METHOD_LABELS, Product, ClientCategory, CLIENT_CATEGORY_LABELS } from "../../types";
 import { ClientService } from "../../services/ClientService";
 import { ProductService } from "../../services/ProductService";
 import { OrderService, ConflictInfo, calcTotals } from "../../services/OrderService";
@@ -24,6 +24,8 @@ export function OrderForm({
 
   const [clientId, setClientId] = useState(existingOrder?.clientId || "");
   const [type, setType] = useState<OrderType>(existingOrder?.type || "locacao");
+  const [clientCategory, setClientCategory] = useState<ClientCategory | "">(existingOrder?.clientCategory || "");
+  const [clientCategoryNotes, setClientCategoryNotes] = useState(existingOrder?.clientCategoryNotes || "");
   const [items, setItems] = useState<OrderItem[]>(existingOrder?.items || []);
   const [pickProductId, setPickProductId] = useState("");
   const [pickQty, setPickQty] = useState(1);
@@ -145,6 +147,10 @@ export function OrderForm({
       setErrorMsg("Adicione ao menos um produto.");
       return;
     }
+    if (!clientCategory) {
+      setErrorMsg("Selecione a categoria do cliente.");
+      return;
+    }
     if (conflicts.length > 0 && !conflictsAcknowledged) {
       setErrorMsg('Há conflitos de disponibilidade. Marque "Liberar mesmo com conflito" para continuar.');
       return;
@@ -176,6 +182,8 @@ export function OrderForm({
             clientPhone: client.phone,
             type,
             items,
+            clientCategory: clientCategory as ClientCategory,
+            clientCategoryNotes,
             orderDate,
             eventDate,
             fittingDate,
@@ -224,6 +232,8 @@ export function OrderForm({
         clientPhone: client.phone,
         type,
         items,
+        clientCategory: clientCategory as ClientCategory,
+        clientCategoryNotes,
         orderDate,
         eventDate,
         fittingDate,
@@ -317,6 +327,35 @@ export function OrderForm({
             <option value="locacao">Locação</option>
             <option value="venda">Venda</option>
           </select>
+        </div>
+      </div>
+
+      {/* Categoria do cliente */}
+      <div className="card p-4 space-y-3">
+        <p className="font-display text-lg">Categoria do cliente *</p>
+        <div className="flex flex-wrap gap-4">
+          {(Object.entries(CLIENT_CATEGORY_LABELS) as [ClientCategory, string][]).map(([value, label]) => (
+            <label key={value} className="flex items-center gap-2 text-sm text-mist-100 normal-case font-normal cursor-pointer">
+              <input
+                type="radio"
+                name="clientCategory"
+                value={value}
+                checked={clientCategory === value}
+                onChange={() => setClientCategory(value)}
+                className="!w-auto"
+              />
+              {label}
+            </label>
+          ))}
+        </div>
+        <div>
+          <label>Observações da categoria (uso interno — não aparece no contrato)</label>
+          <textarea
+            rows={2}
+            value={clientCategoryNotes}
+            onChange={(e) => setClientCategoryNotes(e.target.value)}
+            placeholder="Digite informações adicionais (opcional)..."
+          />
         </div>
       </div>
 

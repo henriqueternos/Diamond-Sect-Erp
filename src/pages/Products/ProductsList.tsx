@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { ProductService } from "../../services/ProductService";
 import { OrderService } from "../../services/OrderService";
 import { StockSyncService } from "../../services/StockSyncService";
-import { Product, Order } from "../../types";
+import { Product, Order, CLIENT_CATEGORY_LABELS } from "../../types";
 import { dateBR } from "../../utils/dates";
 import { Modal, ConfirmDialog } from "../../components/Modal";
 import { ProductStatusBadge } from "../../components/StatusBadge";
@@ -399,11 +399,13 @@ export default function ProductsList() {
             </div>
           </div>
 
+          <div className="overflow-x-auto">
           <table className="table-shell">
             <thead>
               <tr>
                 <th>Pedido</th>
                 <th>Cliente</th>
+                <th>Categoria</th>
                 <th>Qtd.</th>
                 <th>Prova</th>
                 <th>Retirada</th>
@@ -425,6 +427,7 @@ export default function ProductsList() {
                   >
                     <td className="text-diamond">{o.orderNumber}</td>
                     <td>{o.clientName}</td>
+                    <td>{o.clientCategory ? CLIENT_CATEGORY_LABELS[o.clientCategory] : "—"}</td>
                     <td>{item.quantity}</td>
                     <td>{dateBR(o.fittingDate)}</td>
                     <td>{dateBR(o.pickupDate)}</td>
@@ -435,13 +438,14 @@ export default function ProductsList() {
               })}
               {occupyingOrders.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="text-center text-mist-500 py-6">
+                  <td colSpan={8} className="text-center text-mist-500 py-6">
                     Nenhum pedido ativo usando este produto — 100% livre.
                   </td>
                 </tr>
               )}
             </tbody>
           </table>
+          </div>
         </div>
       </Modal>
 

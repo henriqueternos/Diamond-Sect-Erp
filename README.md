@@ -867,3 +867,26 @@ Relatórios, Agenda, Logs) foram lidos e conferidos linha a linha nesta
 revisão final. Nenhum erro de sintaxe, nenhuma escrita arriscada de campo
 vazio no banco, nenhuma rota sem a proteção correta, nenhum cálculo
 financeiro contando pedido cancelado.
+
+## Novo campo: Categoria do Cliente (obrigatório) no pedido
+
+Adicionado ao formulário de Novo Pedido / Editar Pedido, logo abaixo de
+Cliente/Tipo:
+
+- **Categoria do cliente** (obrigatório): Noivo(a) / Padrinho/Madrinha /
+  Debutante / Convidado(a), escolha única (rádio). Sem escolher, o sistema
+  bloqueia o salvamento com a mensagem "Selecione a categoria do cliente."
+- **Observações da categoria** (opcional): campo de texto livre, uso interno.
+
+Onde aparece:
+- No resumo rápido do pedido (tela de Pedidos) — categoria e observação
+  (a observação só aparece se tiver sido preenchida).
+- No painel de "Disponibilidade" do Estoque, ao ver quais pedidos estão
+  usando um produto — nova coluna "Categoria".
+- No **contrato** (tela e PDF) — aparece a categoria do cliente.
+- **A observação da categoria nunca aparece em nenhum documento** (contrato,
+  retirada, pedido interno) — é só para consulta interna no sistema, como
+  pedido.
+
+Pedidos criados antes dessa atualização não têm essa informação preenchida
+— aparecem como "—" até serem editados e a categoria ser escolhida.
