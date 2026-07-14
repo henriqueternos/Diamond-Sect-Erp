@@ -33,12 +33,14 @@ const BASE_STYLE = `
 function itemsTable(order: Order) {
   return `
     <table>
-      <thead><tr><th>Produto</th><th>Código</th><th>Qtd.</th><th>Valor unit.</th><th>Subtotal</th></tr></thead>
+      <thead><tr><th>Produto</th><th>Código</th><th>Componentes locados</th><th>Qtd.</th><th>Valor unit.</th><th>Subtotal</th></tr></thead>
       <tbody>
         ${order.items
           .map(
             (i) =>
-              `<tr><td>${i.productName}</td><td>${i.internalCode}</td><td>${i.quantity}</td><td>${money(
+              `<tr><td>${i.productName}</td><td>${i.internalCode}</td><td>${
+                i.components && i.components.length > 0 ? i.components.join(", ") : "—"
+              }</td><td>${i.quantity}</td><td>${money(
                 i.unitValue
               )}</td><td>${money(i.unitValue * i.quantity)}</td></tr>`
           )
@@ -267,15 +269,16 @@ function pdfComposer(_title: string) {
     doc.text(lines, marginX, y);
     y += lines.length * 13 + 4;
   }
-  function tableItems(items: { productName: string; internalCode: string; quantity: number; unitValue: number }[]) {
+  function tableItems(items: { productName: string; internalCode: string; quantity: number; unitValue: number; components?: string[] }[]) {
     ensureSpace(items.length + 2, 14);
     doc.setFont("times", "bold");
     doc.setFontSize(9.5);
     doc.text("Produto", marginX, y);
-    doc.text("Código", marginX + 220, y);
-    doc.text("Qtd.", marginX + 300, y);
-    doc.text("Unit.", marginX + 350, y);
-    doc.text("Subtotal", marginX + 430, y);
+    doc.text("Componentes", marginX + 150, y);
+    doc.text("Código", marginX + 255, y);
+    doc.text("Qtd.", marginX + 310, y);
+    doc.text("Unit.", marginX + 345, y);
+    doc.text("Subtotal", marginX + 420, y);
     y += 6;
     doc.setDrawColor(220);
     doc.line(marginX, y, pageWidth - marginX, y);
@@ -283,11 +286,13 @@ function pdfComposer(_title: string) {
     doc.setFont("times", "normal");
     items.forEach((i) => {
       ensureSpace(1, 14);
-      doc.text(i.productName.slice(0, 34), marginX, y);
-      doc.text(i.internalCode, marginX + 220, y);
-      doc.text(String(i.quantity), marginX + 300, y);
-      doc.text(money(i.unitValue), marginX + 350, y);
-      doc.text(money(i.unitValue * i.quantity), marginX + 430, y);
+      const componentsLabel = i.components && i.components.length > 0 ? i.components.join(", ") : "—";
+      doc.text(i.productName.slice(0, 20), marginX, y);
+      doc.text(componentsLabel.slice(0, 20), marginX + 150, y);
+      doc.text(i.internalCode, marginX + 255, y);
+      doc.text(String(i.quantity), marginX + 310, y);
+      doc.text(money(i.unitValue), marginX + 345, y);
+      doc.text(money(i.unitValue * i.quantity), marginX + 420, y);
       y += 15;
     });
     y += 6;

@@ -6,6 +6,7 @@ import { OrderService, ConflictInfo, calcTotals } from "../../services/OrderServ
 import { PaymentService } from "../../services/PaymentService";
 import { CustomerCreditService } from "../../services/CustomerCreditService";
 import { dateBR } from "../../utils/dates";
+import { effectiveItemComponents } from "../../utils/components";
 import { useAuth } from "../../hooks/useAuth";
 
 export function OrderForm({
@@ -29,6 +30,7 @@ export function OrderForm({
   const [items, setItems] = useState<OrderItem[]>(existingOrder?.items || []);
   const [pickProductId, setPickProductId] = useState("");
   const [pickQty, setPickQty] = useState(1);
+  const [pickComponents, setPickComponents] = useState<string[]>([]);
 
   const [orderDate, setOrderDate] = useState(existingOrder?.orderDate || (() => new Date().toISOString().slice(0, 10))());
   const [eventDate, setEventDate] = useState(existingOrder?.eventDate || "");
@@ -74,6 +76,7 @@ export function OrderForm({
   }, [type]);
 
   const client = clients.find((c) => c.id === clientId);
+  const pickProduct = products.find((p) => p.id === pickProductId);
   const totalPaidSoFar = isEdit ? existingOrder!.amountPaid : payments.reduce((s, p) => s + p.amount, 0);
   const totals = useMemo(() => calcTotals({ items, discount, surcharge, creditUsed, amountPaid: totalPaidSoFar }), [
     items,
@@ -98,8 +101,19 @@ export function OrderForm({
     const product = products.find((p) => p.id === pickProductId);
     if (!product) return;
     if (pickQty < 1) return;
-    const existingQty = items.find((i) => i.productId === product.id)?.quantity || 0;
-    if (existingQty + pickQty > product.availableQuantity) {
+
+    const hasComponents = Boolean(product.componentNames && product.componentNames.length > 0);
+    if (hasComponents && pickComponents.length === 0) {
+      setErrorMsg("Selecione ao menos um componente para adicionar este produto.");
+      return;
+    }
+
+    // Produto com componentes: cada linha representa um conjunto específico
+    // de peças de UMA unidade — não faz sentido "2 paletós" se o produto em
+    // si tem 1 unidade cadastrada, então a quantidade fica sempre 1.
+    const qty = hasComponents ? 1 : pickQty;
+    const existingQty = hasComponents ? 0 : items.filter((i) => i.productId === product.id).reduce((s, i) => s + i.quantity, 0);
+    if (!hasComponents && existingQty + qty > product.availableQuantity) {
       setErrorMsg(
         `Apenas ${product.availableQuantity} unidade(s) de "${product.name}" disponível(is) em estoque (já há ${existingQty} no pedido).`
       );
@@ -107,21 +121,48 @@ export function OrderForm({
       setErrorMsg(null);
     }
     const unitValue = type === "venda" ? product.saleValue : product.rentValue;
+
     setItems((prev) => {
-      const existing = prev.find((i) => i.productId === product.id);
-      if (existing) {
-        return prev.map((i) => (i.productId === product.id ? { ...i, quantity: i.quantity + pickQty } : i));
+      if (hasComponents) {
+        // Cada combinação de componentes é uma linha própria — não mistura
+        // com outra linha do mesmo produto que tenha um conjunto diferente
+        // (ex.: já tem "Paletó" no pedido e agora adiciona "Colete" à parte).
+        const sortedNew = [...pickComponents].sort().join("|");
+        const already = prev.some(
+          (i) => i.productId === product.id && [...(i.components || [])].sort().join("|") === sortedNew
+        );
+        if (already) return prev;
+        return [
+          ...prev,
+          {
+            productId: product.id,
+            productName: product.name,
+            internalCode: product.internalCode,
+            quantity: 1,
+            unitValue,
+            components: pickComponents,
+          },
+        ];
       }
-      return [...prev, { productId: product.id, productName: product.name, internalCode: product.internalCode, quantity: pickQty, unitValue }];
+      const existing = prev.find((i) => i.productId === product.id && !i.components);
+      if (existing) {
+        return prev.map((i) => (i.productId === product.id && !i.components ? { ...i, quantity: i.quantity + qty } : i));
+      }
+      return [...prev, { productId: product.id, productName: product.name, internalCode: product.internalCode, quantity: qty, unitValue }];
     });
     setPickProductId("");
     setPickQty(1);
+    setPickComponents([]);
     setConflicts([]);
     setConflictsAcknowledged(false);
   }
 
-  function removeItem(productId: string) {
-    setItems((prev) => prev.filter((i) => i.productId !== productId));
+  function toggleComponent(name: string) {
+    setPickComponents((prev) => (prev.includes(name) ? prev.filter((c) => c !== name) : [...prev, name]));
+  }
+
+  function removeItem(index: number) {
+    setItems((prev) => prev.filter((_, i) => i !== index));
   }
 
   async function handleCheckConflicts() {
@@ -365,23 +406,61 @@ export function OrderForm({
         <div className="flex flex-wrap gap-2 items-end">
           <div className="flex-1 min-w-[220px]">
             <label>Produto</label>
-            <select value={pickProductId} onChange={(e) => setPickProductId(e.target.value)}>
+            <select
+              value={pickProductId}
+              onChange={(e) => {
+                setPickProductId(e.target.value);
+                setPickComponents([]);
+              }}
+            >
               <option value="">Selecione...</option>
               {products.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.name} ({p.internalCode}) — disp. {p.availableQuantity}
+                  {p.componentNames && p.componentNames.length > 0 ? " — por peça" : ""}
                 </option>
               ))}
             </select>
           </div>
-          <div className="w-24">
-            <label>Qtd.</label>
-            <input type="number" min={1} value={pickQty} onChange={(e) => setPickQty(Number(e.target.value))} />
-          </div>
-          <button type="button" className="btn-secondary" onClick={addItem} disabled={!pickProductId}>
+          {!(pickProduct?.componentNames && pickProduct.componentNames.length > 0) && (
+            <div className="w-24">
+              <label>Qtd.</label>
+              <input type="number" min={1} value={pickQty} onChange={(e) => setPickQty(Number(e.target.value))} />
+            </div>
+          )}
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={addItem}
+            disabled={
+              !pickProductId ||
+              Boolean(pickProduct?.componentNames && pickProduct.componentNames.length > 0 && pickComponents.length === 0)
+            }
+          >
             + Adicionar
           </button>
         </div>
+
+        {pickProduct?.componentNames && pickProduct.componentNames.length > 0 && (
+          <div className="border border-ink-600 rounded-lg p-3 space-y-2">
+            <p className="text-xs font-semibold text-mist-300 uppercase tracking-wider">Componentes que serão locados *</p>
+            <div className="flex flex-wrap gap-4">
+              {pickProduct.componentNames.map((name) => (
+                <label key={name} className="flex items-center gap-2 text-sm text-mist-100 normal-case font-normal cursor-pointer">
+                  <input type="checkbox" className="!w-auto" checked={pickComponents.includes(name)} onChange={() => toggleComponent(name)} />
+                  {name}
+                </label>
+              ))}
+            </div>
+            <button
+              type="button"
+              className="btn-ghost !px-2 !py-1 text-xs"
+              onClick={() => setPickComponents(pickProduct.componentNames || [])}
+            >
+              Selecionar conjunto completo
+            </button>
+          </div>
+        )}
 
         {items.length > 0 && (
           <div className="overflow-x-auto">
@@ -389,6 +468,7 @@ export function OrderForm({
             <thead>
               <tr>
                 <th>Produto</th>
+                <th>Componentes</th>
                 <th>Qtd.</th>
                 <th>Valor unit.</th>
                 <th>Subtotal</th>
@@ -396,16 +476,17 @@ export function OrderForm({
               </tr>
             </thead>
             <tbody>
-              {items.map((i) => (
-                <tr key={i.productId}>
+              {items.map((i, idx) => (
+                <tr key={`${i.productId}-${(i.components || []).join(",")}-${idx}`}>
                   <td>
                     {i.productName} <span className="text-mist-500 text-xs">({i.internalCode})</span>
                   </td>
+                  <td>{i.components && i.components.length > 0 ? i.components.join(", ") : "—"}</td>
                   <td>{i.quantity}</td>
                   <td>{i.unitValue.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</td>
                   <td>{(i.unitValue * i.quantity).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</td>
                   <td>
-                    <button type="button" className="btn-ghost !px-2 !py-1 text-xs text-danger" onClick={() => removeItem(i.productId)}>
+                    <button type="button" className="btn-ghost !px-2 !py-1 text-xs text-danger" onClick={() => removeItem(idx)}>
                       remover
                     </button>
                   </td>
@@ -462,6 +543,7 @@ export function OrderForm({
             <thead>
               <tr>
                 <th>Produto</th>
+                <th>Componentes em conflito</th>
                 <th>Qtd. pedida</th>
                 <th>Qtd. disponível</th>
                 <th>Pedido conflitante</th>
@@ -475,6 +557,7 @@ export function OrderForm({
               {conflicts.map((c, idx) => (
                 <tr key={idx}>
                   <td>{c.productName}</td>
+                  <td>{c.conflictingComponents?.join(", ") || "—"}</td>
                   <td>{c.requestedQty}</td>
                   <td className={c.availableQty < c.requestedQty ? "text-danger" : "text-success"}>{c.availableQty}</td>
                   <td className="text-diamond">{c.conflictingOrderNumber}</td>

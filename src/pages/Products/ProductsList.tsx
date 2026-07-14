@@ -4,6 +4,7 @@ import { ProductService } from "../../services/ProductService";
 import { OrderService } from "../../services/OrderService";
 import { StockSyncService } from "../../services/StockSyncService";
 import { Product, Order, CLIENT_CATEGORY_LABELS } from "../../types";
+import { effectiveItemComponents } from "../../utils/components";
 import { dateBR } from "../../utils/dates";
 import { Modal, ConfirmDialog } from "../../components/Modal";
 import { ProductStatusBadge } from "../../components/StatusBadge";
@@ -29,6 +30,7 @@ const EMPTY_PRODUCT: Omit<Product, "id" | "status"> = {
   purchaseDate: "",
   notes: "",
   photoUrl: "",
+  componentNames: [],
   totalQuantity: 1,
   availableQuantity: 1,
   reservedQuantity: 0,
@@ -168,6 +170,22 @@ export default function ProductsList() {
       )
     : [];
 
+  // Disponibilidade por componente (ex.: paletó/calça/colete de um terno) —
+  // um componente fica indisponível se QUALQUER pedido ativo (não importa
+  // qual) já tiver reservado ele, independente da quantidade do produto.
+  const componentAvailability = useMemo(() => {
+    if (!liveAvailabilityProduct?.componentNames || liveAvailabilityProduct.componentNames.length === 0) return null;
+    const busy = new Set<string>();
+    occupyingOrders.forEach((o) => {
+      const item = o.items.find((i) => i.productId === liveAvailabilityProduct.id);
+      if (!item) return;
+      const comps = effectiveItemComponents(item, liveAvailabilityProduct);
+      comps?.forEach((c) => busy.add(c));
+    });
+    return liveAvailabilityProduct.componentNames.map((name) => ({ name, available: !busy.has(name) }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [liveAvailabilityProduct, occupyingOrders.length, orders]);
+
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between flex-wrap gap-3">
@@ -217,6 +235,9 @@ export default function ProductsList() {
                 <td className="text-mist-100 font-medium">
                   {p.name}
                   <div className="text-xs text-mist-500">{p.brand}</div>
+                  {p.componentNames && p.componentNames.length > 0 && (
+                    <div className="text-[10px] text-diamond mt-0.5">Por peça: {p.componentNames.join(", ")}</div>
+                  )}
                 </td>
                 <td>{p.internalCode}</td>
                 <td>
@@ -282,6 +303,36 @@ export default function ProductsList() {
           <div>
             <label>Subcategoria</label>
             <input value={form.subcategory} onChange={(e) => update("subcategory", e.target.value)} />
+          </div>
+
+          <div className="md:col-span-3">
+            <label>Componentes do produto (opcional — separe por vírgula)</label>
+            <input
+              value={(form.componentNames || []).join(", ")}
+              onChange={(e) =>
+                update(
+                  "componentNames",
+                  e.target.value
+                    .split(",")
+                    .map((s) => s.trim())
+                    .filter(Boolean)
+                )
+              }
+              placeholder="Ex: Paletó, Calça, Colete"
+            />
+            <div className="flex items-center gap-2 mt-1">
+              <p className="text-[11px] text-mist-500">
+                Deixe vazio para um produto simples. Preenchido, cada componente pode ser locado separadamente,
+                com disponibilidade própria.
+              </p>
+              <button
+                type="button"
+                className="btn-ghost !px-2 !py-1 text-[11px] shrink-0"
+                onClick={() => update("componentNames", ["Paletó", "Calça", "Colete"])}
+              >
+                Preencher: Terno
+              </button>
+            </div>
           </div>
 
           <div>
@@ -399,6 +450,23 @@ export default function ProductsList() {
             </div>
           </div>
 
+          {componentAvailability && (
+            <div className="card p-3 space-y-2">
+              <p className="text-mist-500 text-xs">Disponibilidade por componente</p>
+              <div className="flex flex-wrap gap-3">
+                {componentAvailability.map((c) => (
+                  <div key={c.name} className="flex items-center gap-1.5 text-sm">
+                    <span>{c.available ? "🟢" : "🔴"}</span>
+                    <span>{c.name}</span>
+                    <span className={c.available ? "text-success" : "text-danger"}>
+                      {c.available ? "Disponível" : "Locado/Reservado"}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div className="overflow-x-auto">
           <table className="table-shell">
             <thead>
@@ -406,6 +474,7 @@ export default function ProductsList() {
                 <th>Pedido</th>
                 <th>Cliente</th>
                 <th>Categoria</th>
+                {componentAvailability && <th>Componentes</th>}
                 <th>Qtd.</th>
                 <th>Prova</th>
                 <th>Retirada</th>
@@ -427,7 +496,17 @@ export default function ProductsList() {
                   >
                     <td className="text-diamond">{o.orderNumber}</td>
                     <td>{o.clientName}</td>
-                    <td>{o.clientCategory ? CLIENT_CATEGORY_LABELS[o.clientCategory] : "—"}</td>
+                    <td>
+                      {o.clientCategory ? CLIENT_CATEGORY_LABELS[o.clientCategory] : "—"}
+                      {o.clientCategoryNotes && (
+                        <p className="text-[11px] text-mist-500 mt-0.5 max-w-[160px] whitespace-normal">
+                          {o.clientCategoryNotes}
+                        </p>
+                      )}
+                    </td>
+                    {componentAvailability && (
+                      <td>{effectiveItemComponents(item, liveAvailabilityProduct)?.join(", ") || "—"}</td>
+                    )}
                     <td>{item.quantity}</td>
                     <td>{dateBR(o.fittingDate)}</td>
                     <td>{dateBR(o.pickupDate)}</td>
@@ -438,7 +517,7 @@ export default function ProductsList() {
               })}
               {occupyingOrders.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="text-center text-mist-500 py-6">
+                  <td colSpan={componentAvailability ? 9 : 8} className="text-center text-mist-500 py-6">
                     Nenhum pedido ativo usando este produto — 100% livre.
                   </td>
                 </tr>

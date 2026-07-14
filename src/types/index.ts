@@ -108,6 +108,13 @@ export interface Product {
   notes?: string;
   photoUrl?: string; // URL opcional (sem upload)
 
+  /** Componentes internos do produto (ex.: Paletó, Calça, Colete de um
+   * terno). Genérico — qualquer produto pode ter, não só ternos. Vazio ou
+   * ausente = produto sem componentes, funciona como sempre funcionou.
+   * A disponibilidade de cada componente é calculada por período (mesma
+   * lógica de conflito de datas), não por um contador fixo separado. */
+  componentNames?: string[];
+
   totalQuantity: number;
   availableQuantity: number;
   reservedQuantity: number;
@@ -186,6 +193,11 @@ export interface OrderItem {
   internalCode: string;
   quantity: number;
   unitValue: number; // rentValue ou saleValue conforme o tipo do pedido
+  /** Só relevante se o produto tiver componentNames. Quais componentes
+   * foram locados nessa linha (ex.: ["Paletó","Colete"]). Pedidos antigos
+   * sem esse campo, num produto com componentes, são tratados como se
+   * tivessem selecionado o conjunto completo (compatibilidade). */
+  components?: string[];
 }
 
 export interface Order {

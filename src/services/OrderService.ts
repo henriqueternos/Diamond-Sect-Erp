@@ -15,9 +15,10 @@ import {
 import { signInWithEmailAndPassword, signOut } from "firebase/auth";
 import { db } from "../firebase/firebaseConfig";
 import { getSecondaryAuth, getSecondaryDb } from "../firebase/secondaryAuth";
-import { Order, OrderItem, OrderStatus } from "../types";
+import { Order, OrderItem, OrderStatus, Product } from "../types";
 import { LogService } from "./LogService";
 import { StockSyncService } from "./StockSyncService";
+import { effectiveItemComponents, componentsOverlap } from "../utils/components";
 import { ProductService } from "./ProductService";
 import { CustomerCreditService } from "./CustomerCreditService";
 import { AuthService } from "./AuthService";
@@ -48,6 +49,10 @@ export interface ConflictInfo {
   eventDate?: string;
   returnDate?: string;
   status: OrderStatus;
+  /** Só preenchido quando o produto tem componentes — quais componentes o
+   * pedido conflitante já tem reservado (para mostrar exatamente o que
+   * está batendo, ex.: "Paletó"). */
+  conflictingComponents?: string[];
 }
 
 function calcTotals(order: Pick<Order, "items" | "discount" | "surcharge" | "creditUsed" | "amountPaid">) {
@@ -106,17 +111,22 @@ export const OrderService = {
       .filter((o) => o.id !== ignoreOrderId);
 
     // Busca a quantidade disponível real de cada produto envolvido, para
-    // mostrar no alerta de conflito (evita o campo ficar sempre zerado).
+    // mostrar no alerta de conflito (evita o campo ficar sempre zerado), e
+    // também o produto inteiro (precisamos de componentNames, se houver).
     const productIds = [...new Set(items.map((i) => i.productId))];
     const availableByProduct = new Map<string, number>();
+    const productById = new Map<string, Product>();
     await Promise.all(
       productIds.map(async (id) => {
         const product = await ProductService.getById(id);
         availableByProduct.set(id, product?.availableQuantity ?? 0);
+        if (product) productById.set(id, product);
       })
     );
 
     for (const item of items) {
+      const product = productById.get(item.productId);
+      const requestedComponents = effectiveItemComponents(item, product);
       for (const o of orders) {
         const overlap = rangesOverlap(
           dates.pickupDate,
@@ -128,6 +138,17 @@ export const OrderService = {
         if (!overlap) continue;
         const match = o.items.find((i) => i.productId === item.productId);
         if (!match) continue;
+
+        // Produto com componentes (ex.: paletó/calça/colete de um terno):
+        // só é conflito de verdade se os componentes pedidos agora e os já
+        // reservados nesse outro pedido tiverem algo em comum. Produto sem
+        // componentes: mantém o comportamento de sempre (qualquer uso do
+        // mesmo produto no período já é conflito).
+        if (requestedComponents) {
+          const matchComponents = effectiveItemComponents(match, product);
+          if (!matchComponents || !componentsOverlap(requestedComponents, matchComponents)) continue;
+        }
+
         conflicts.push({
           productId: item.productId,
           productName: item.productName,
@@ -141,6 +162,7 @@ export const OrderService = {
           eventDate: o.eventDate,
           returnDate: o.returnDate,
           status: o.status,
+          conflictingComponents: requestedComponents ? effectiveItemComponents(match, product) || undefined : undefined,
         });
       }
     }

@@ -890,3 +890,47 @@ Onde aparece:
 
 Pedidos criados antes dessa atualização não têm essa informação preenchida
 — aparecem como "—" até serem editados e a categoria ser escolhida.
+
+## Nova funcionalidade: controle de disponibilidade por componente (ex.: terno)
+
+Implementado de forma **genérica** — qualquer produto pode ter componentes,
+não só ternos. A ideia: um produto pode ser dividido em partes que se
+alugam separadamente (ex.: Paletó, Calça, Colete), cada uma com
+disponibilidade própria e independente.
+
+### Cadastro do produto
+Novo campo opcional **"Componentes do produto"** (Estoque → Novo/Editar
+produto) — lista separada por vírgula (ex.: `Paletó, Calça, Colete`), com
+um atalho "Preencher: Terno" para o caso mais comum. Deixe vazio para um
+produto simples (funciona exatamente como antes).
+
+### Novo pedido
+Ao escolher um produto que tem componentes, aparece um quadro obrigatório
+**"Componentes que serão locados"** com uma caixinha por componente, mais
+o botão **"Selecionar conjunto completo"** (marca todas de uma vez). Não
+dá para adicionar o produto ao pedido sem marcar pelo menos um componente.
+Cada combinação diferente de componentes vira uma linha própria no pedido
+— por exemplo, dá para ter "Paletó" numa linha e "Colete" em outra, do
+mesmo terno, se dois clientes diferentes alugarem partes dele.
+
+### Verificação de disponibilidade
+A checagem de conflito de datas agora é por componente: dois pedidos só
+conflitam de verdade se tiverem **pelo menos um componente em comum** no
+mesmo período. Alugar o paletó de um terno não impede alugar a calça do
+mesmo terno para outra pessoa, no mesmo período — mas tentar alugar o
+paletó duas vezes no mesmo período já bloqueia.
+
+### Onde aparece
+- Estoque → botão de disponibilidade: mostra 🟢/🔴 por componente, e a
+  tabela de pedidos que usam aquele produto mostra quais componentes cada
+  um está segurando.
+- Resumo do pedido: mostra os componentes de cada item.
+- **Contrato** (tela, impressão e PDF): mostra "Componentes locados" por
+  item — inclusive na retirada e no pedido interno, já que ajuda a saber
+  exatamente o que entregar.
+
+### Compatibilidade
+Pedidos feitos antes dessa atualização, num produto que passou a ter
+componentes, são tratados automaticamente como se tivessem o **conjunto
+completo** selecionado — não perdem nem ganham disponibilidade por causa
+da mudança.
