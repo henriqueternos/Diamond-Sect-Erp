@@ -934,3 +934,41 @@ Pedidos feitos antes dessa atualização, num produto que passou a ter
 componentes, são tratados automaticamente como se tivessem o **conjunto
 completo** selecionado — não perdem nem ganham disponibilidade por causa
 da mudança.
+
+## Correção: campo de componentes do produto
+
+Trocado o campo "separe por vírgula" (que estava confuso de usar) por uma
+forma de lançar um componente de cada vez: digite o nome, clique em
+"+ Adicionar" (ou aperte Enter), e ele vira uma etiqueta na lista — cada
+uma com um "×" para remover. Continua funcionando o atalho "Preencher:
+Terno" para o caso mais comum.
+
+## Revisão de integração — categoria do cliente + componentes por peça
+
+Conferi ponta a ponta a integração dessas duas funcionalidades mais recentes
+com o resto do sistema. Está tudo conectado corretamente:
+
+- Tipos (`Order`, `OrderItem`, `Product`) → formulário de pedido → serviço
+  de pedidos → verificação de conflito → contrato → telas de visualização.
+  Sem nenhuma escrita de campo vazio (`undefined`) no Firestore em nenhum
+  ponto novo.
+- A remoção de item do pedido e a "chave" de cada linha na tabela foram
+  ajustadas para funcionar corretamente mesmo com várias linhas do mesmo
+  produto (combinações diferentes de componentes) — antes disso teria dado
+  problema de remover a linha errada.
+- Compatibilidade com pedidos antigos confirmada nos três pontos que
+  importam: verificação de conflito, exibição na tela e resumo do pedido.
+
+**Um ponto que decidi documentar em vez de esconder:** o contador
+"Disponível/Reservado" simples do produto no Estoque (aquele número único
+tipo "0/1") não sabe distinguir componentes — ele conta qualquer pedido
+ativo que use o produto, então se paletó, calça e colete estiverem
+reservados em 3 pedidos diferentes ao mesmo tempo, esse número pode mostrar
+"indisponível" mesmo que, tecnicamente, sejam partes diferentes. Isso é só
+esse contador resumido (não afeta a verificação de disponibilidade de
+verdade, que já é por componente e está correta) — o painel de
+"Disponibilidade" com o 🟢/🔴 por peça é a fonte certa pra conferir a
+situação real de cada componente. Posso aprofundar isso também, caso você
+ache importante o contador simples refletir por componente — é um trabalho
+maior, então preferi ser transparente sobre essa limitação agora em vez de
+prometer que estava 100% refinado nesse detalhe específico.

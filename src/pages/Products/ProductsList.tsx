@@ -51,6 +51,7 @@ export default function ProductsList() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Product | null>(null);
   const [form, setForm] = useState<Omit<Product, "id" | "status">>(EMPTY_PRODUCT);
+  const [newComponentName, setNewComponentName] = useState("");
   const [saving, setSaving] = useState(false);
   const [toDelete, setToDelete] = useState<Product | null>(null);
   const [availabilityProduct, setAvailabilityProduct] = useState<Product | null>(null);
@@ -88,12 +89,14 @@ export default function ProductsList() {
   function openCreate() {
     setEditing(null);
     setForm(EMPTY_PRODUCT);
+    setNewComponentName("");
     setModalOpen(true);
   }
   function openEdit(p: Product) {
     setEditing(p);
     const { id, status, ...rest } = p;
     setForm(rest);
+    setNewComponentName("");
     setModalOpen(true);
   }
 
@@ -160,6 +163,22 @@ export default function ProductsList() {
 
   function update<K extends keyof typeof form>(key: K, value: (typeof form)[K]) {
     setForm((f) => ({ ...f, [key]: value }));
+  }
+
+  function addComponentName() {
+    const name = newComponentName.trim();
+    if (!name) return;
+    const current = form.componentNames || [];
+    if (current.some((c) => c.toLowerCase() === name.toLowerCase())) {
+      setNewComponentName("");
+      return;
+    }
+    update("componentNames", [...current, name]);
+    setNewComponentName("");
+  }
+
+  function removeComponentName(name: string) {
+    update("componentNames", (form.componentNames || []).filter((c) => c !== name));
   }
 
   const occupyingOrders = availabilityProduct
@@ -306,21 +325,46 @@ export default function ProductsList() {
           </div>
 
           <div className="md:col-span-3">
-            <label>Componentes do produto (opcional — separe por vírgula)</label>
-            <input
-              value={(form.componentNames || []).join(", ")}
-              onChange={(e) =>
-                update(
-                  "componentNames",
-                  e.target.value
-                    .split(",")
-                    .map((s) => s.trim())
-                    .filter(Boolean)
-                )
-              }
-              placeholder="Ex: Paletó, Calça, Colete"
-            />
-            <div className="flex items-center gap-2 mt-1">
+            <label>Componentes do produto (opcional)</label>
+            <div className="flex gap-2">
+              <input
+                value={newComponentName}
+                onChange={(e) => setNewComponentName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    addComponentName();
+                  }
+                }}
+                placeholder="Ex: Paletó"
+              />
+              <button type="button" className="btn-secondary shrink-0" onClick={addComponentName}>
+                + Adicionar
+              </button>
+            </div>
+
+            {form.componentNames && form.componentNames.length > 0 && (
+              <div className="flex flex-wrap gap-2 mt-2">
+                {form.componentNames.map((name) => (
+                  <span
+                    key={name}
+                    className="inline-flex items-center gap-1.5 bg-diamond/10 text-diamond border border-diamond/30 rounded-full px-3 py-1 text-xs"
+                  >
+                    {name}
+                    <button
+                      type="button"
+                      onClick={() => removeComponentName(name)}
+                      className="text-diamond hover:text-danger font-bold leading-none"
+                      title="Remover"
+                    >
+                      ×
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
+
+            <div className="flex items-center gap-2 mt-1.5">
               <p className="text-[11px] text-mist-500">
                 Deixe vazio para um produto simples. Preenchido, cada componente pode ser locado separadamente,
                 com disponibilidade própria.
