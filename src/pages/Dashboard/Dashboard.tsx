@@ -3,7 +3,9 @@ import { useNavigate } from "react-router-dom";
 import { ClientService } from "../../services/ClientService";
 import { ProductService } from "../../services/ProductService";
 import { OrderService } from "../../services/OrderService";
-import { Client, Order, OrderStatus, Product } from "../../types";
+import { CashFlowService } from "../../services/CashFlowService";
+import { PaymentService } from "../../services/PaymentService";
+import { Client, Order, OrderStatus, Product, CashRegister, Payment } from "../../types";
 import { OrderStatusBadge } from "../../components/StatusBadge";
 import { DashboardStagePanel } from "../../components/DashboardStagePanel";
 import { useAuth } from "../../hooks/useAuth";
@@ -15,15 +17,21 @@ export default function Dashboard() {
   const [clients, setClients] = useState<Client[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
+  const [cashRegs, setCashRegs] = useState<CashRegister[]>([]);
+  const [payments, setPayments] = useState<Payment[]>([]);
 
   useEffect(() => {
     const u1 = ClientService.subscribeAll(setClients);
     const u2 = ProductService.subscribeAll(setProducts);
     const u3 = OrderService.subscribeAll(setOrders);
+    const u4 = CashFlowService.subscribeForDate(CashFlowService.todayId(), setCashRegs);
+    const u5 = PaymentService.subscribeAll(setPayments);
     return () => {
       u1();
       u2();
       u3();
+      u4();
+      u5();
     };
   }, []);
 
@@ -43,6 +51,30 @@ export default function Dashboard() {
 
   const recentOrders = orders.slice(0, 6);
 
+  const cancelledOrderIds = new Set(orders.filter((o) => o.status === "cancelado").map((o) => o.id));
+  const todayId = CashFlowService.todayId();
+  const dayTotalSystemInflow = payments
+    .filter((p) => p.date === todayId && !cancelledOrderIds.has(p.orderId))
+    .reduce((s, p) => s + p.amount, 0);
+
+  const openCashReg = cashRegs.find((r) => r.status === "aberto") || null;
+  const lastClosedCashReg = cashRegs.find((r) => r.status === "fechado") || null;
+  const alreadyClosedPortion = cashRegs
+    .filter((r) => r.status === "fechado")
+    .reduce((s, r) => s + (r.closingSystemInflow || 0), 0);
+
+  let cashCardBalance: number | null = null;
+  let cashCardLabel = "Nenhum caixa aberto hoje";
+  if (openCashReg) {
+    const inflow = Math.max(dayTotalSystemInflow - alreadyClosedPortion, 0);
+    const summary = CashFlowService.computeBalance(openCashReg, inflow);
+    cashCardBalance = summary.balance;
+    cashCardLabel = "Saldo atual (caixa aberto)";
+  } else if (lastClosedCashReg) {
+    cashCardBalance = lastClosedCashReg.closingBalance || 0;
+    cashCardLabel = "Último saldo (caixa fechado)";
+  }
+
   async function handleStatusChange(order: Order, status: OrderStatus) {
     try {
       await OrderService.update(order.id, { status }, { id: user!.id, name: user!.name });
@@ -60,7 +92,7 @@ export default function Dashboard() {
         <p className="text-sm text-mist-500">Dados em tempo real do Firestore.</p>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
         <div className="card p-5">
           <p className="text-xs uppercase tracking-wide text-mist-500 mb-1">Valor recebido</p>
           <p className="text-2xl font-display text-success">
@@ -71,6 +103,12 @@ export default function Dashboard() {
           <p className="text-xs uppercase tracking-wide text-mist-500 mb-1">Valor em aberto</p>
           <p className="text-2xl font-display text-warn">
             {openBalance.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+          </p>
+        </div>
+        <div className="card p-5 cursor-pointer hover:border-diamond/40" onClick={() => navigate("/caixa")}>
+          <p className="text-xs uppercase tracking-wide text-mist-500 mb-1">{cashCardLabel}</p>
+          <p className="text-2xl font-display text-diamond">
+            {cashCardBalance !== null ? cashCardBalance.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) : "—"}
           </p>
         </div>
         <div className="card p-5">

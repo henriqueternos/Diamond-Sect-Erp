@@ -83,7 +83,10 @@ service cloud.firestore {
       allow delete: if isManagerOrAdmin();
     }
     match /expenses/{id} { allow read, write: if isSignedIn(); }
-    match /cashFlow/{id} { allow read, write: if isSignedIn(); }
+    match /cashFlow/{id} {
+      allow read, create, update: if isSignedIn();
+      allow delete: if isAdmin();
+    }
     match /reports/{id} { allow read, write: if isSignedIn(); }
     match /notifications/{id} { allow read, write: if isSignedIn(); }
     match /productHistory/{id} { allow read, write: if isSignedIn(); }

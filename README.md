@@ -972,3 +972,45 @@ situação real de cada componente. Posso aprofundar isso também, caso você
 ache importante o contador simples refletir por componente — é um trabalho
 maior, então preferi ser transparente sobre essa limitação agora em vez de
 prometer que estava 100% refinado nesse detalhe específico.
+
+## Busca de produto no formulário de pedido
+
+Adicionado um campo "Buscar produto" acima da lista de seleção, em Novo
+Pedido / Editar Pedido — digite nome, código, marca ou cor e a lista logo
+abaixo já filtra sozinha, mostrando quantos itens foram encontrados. Fica
+bem mais fácil achar o produto certo quando o estoque tem muitos itens
+cadastrados.
+
+## Busca de produto no Novo Pedido
+
+Adicionado um campo de busca acima da lista de produtos, na tela de
+Novo Pedido / Editar Pedido — filtra por nome, código interno, marca ou
+cor enquanto você digita, mostrando quantos resultados encontrou. Fica
+bem mais rápido achar o produto certo quando o estoque tem muitos itens.
+
+## Correção: Caixa — reabrir no mesmo dia, excluir, e conectar Dashboard/Relatórios
+
+Três problemas reais encontrados e corrigidos:
+
+1. **Não dava para abrir um novo caixa no mesmo dia depois de fechado.** O
+   sistema usava a própria data como identificador único (um caixa por
+   dia). Reestruturado: agora cada abertura de caixa é um registro
+   independente, então dá para abrir quantas sessões quiser no mesmo dia
+   (ex.: manhã e tarde). Só não deixa abrir uma nova sessão enquanto já
+   tiver uma aberta — precisa fechar a atual primeiro.
+2. **Não existia opção de excluir um caixa.** Adicionado botão "Excluir
+   este caixa", visível só para administradores, com confirmação antes de
+   apagar (e fica registrado no log).
+3. **Dashboard e Relatórios não mostravam nada do Caixa.** Agora:
+   - **Dashboard:** novo cartão mostrando o saldo do caixa aberto agora (ou
+     o último saldo fechado, se não tiver nenhum aberto), com atalho para
+     a tela de Caixa.
+   - **Relatórios:** nova seção "Resumo do Caixa no período", respeitando
+     os mesmos filtros de data inicial/final da tela — soma saldo inicial,
+     entradas, saídas/sangrias e saldo final de todos os caixas do período.
+
+Detalhe técnico: quando há mais de uma sessão de caixa no mesmo dia, o
+sistema divide corretamente quanto de cada pagamento de pedido pertence a
+qual sessão (guardando, no fechamento, quanto daquele total já foi
+contado) — evita contar o mesmo pagamento duas vezes se houver duas
+sessões no mesmo dia.

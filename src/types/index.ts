@@ -333,12 +333,16 @@ export interface CashEntry {
 }
 
 export interface CashRegister {
-  id: string; // data no formato YYYY-MM-DD
-  date: string;
+  id: string; // ID gerado automaticamente — dá para ter mais de um por dia
+  date: string; // YYYY-MM-DD
   status: "aberto" | "fechado";
   openingBalance: number;
   entries: CashEntry[];
   closingBalance?: number;
+  /** Quanto de pagamento de pedido (detectado automaticamente) foi contado
+   * nesta sessão até o fechamento — usado para dividir corretamente o
+   * total do dia quando há mais de um caixa aberto/fechado na mesma data. */
+  closingSystemInflow?: number;
   openedBy?: string;
   openedByName?: string;
   closedBy?: string;

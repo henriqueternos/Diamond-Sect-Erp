@@ -3,7 +3,7 @@ import { CashFlowService } from "../../services/CashFlowService";
 import { PaymentService } from "../../services/PaymentService";
 import { OrderService } from "../../services/OrderService";
 import { CashRegister, Order, Payment } from "../../types";
-import { Modal } from "../../components/Modal";
+import { Modal, ConfirmDialog } from "../../components/Modal";
 import { useAuth } from "../../hooks/useAuth";
 
 function money(v: number) {
@@ -11,14 +11,15 @@ function money(v: number) {
 }
 
 export default function CashFlow() {
-  const { user, can } = useAuth();
+  const { user, can, isAdmin } = useAuth();
   const [dateId, setDateId] = useState(CashFlowService.todayId());
-  const [reg, setReg] = useState<CashRegister | null>(null);
+  const [regs, setRegs] = useState<CashRegister[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [openModal, setOpenModal] = useState(false);
-  const [closeModal, setCloseModal] = useState(false);
-  const [entryModal, setEntryModal] = useState<"entrada" | "saida" | "sangria" | null>(null);
+  const [closeTarget, setCloseTarget] = useState<CashRegister | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<CashRegister | null>(null);
+  const [entryTarget, setEntryTarget] = useState<{ reg: CashRegister; type: "entrada" | "saida" | "sangria" } | null>(null);
 
   const [openingBalance, setOpeningBalance] = useState(0);
   const [closingBalanceInput, setClosingBalanceInput] = useState(0);
@@ -26,22 +27,31 @@ export default function CashFlow() {
   const [entryDescription, setEntryDescription] = useState("");
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => CashFlowService.subscribeDay(dateId, setReg), [dateId]);
+  useEffect(() => CashFlowService.subscribeForDate(dateId, setRegs), [dateId]);
   useEffect(() => PaymentService.subscribeAll(setPayments), []);
   useEffect(() => OrderService.subscribeAll(setOrders), []);
 
   // Pagamento de pedido cancelado não deve entrar no saldo do caixa — como
   // se o pedido nunca tivesse existido para fins de valor.
   const cancelledOrderIds = useMemo(() => new Set(orders.filter((o) => o.status === "cancelado").map((o) => o.id)), [orders]);
-  const systemInflow = useMemo(
-    () =>
-      payments
-        .filter((p) => p.date === dateId && !cancelledOrderIds.has(p.orderId))
-        .reduce((s, p) => s + p.amount, 0),
+  const dayTotalSystemInflow = useMemo(
+    () => payments.filter((p) => p.date === dateId && !cancelledOrderIds.has(p.orderId)).reduce((s, p) => s + p.amount, 0),
     [payments, dateId, cancelledOrderIds]
   );
 
-  const summary = reg ? CashFlowService.computeBalance(reg, systemInflow) : null;
+  const openReg = regs.find((r) => r.status === "aberto") || null;
+  // O caixa aberto (se tiver) absorve o que sobrou do dia depois de tirar o
+  // que os caixas já fechados naquele mesmo dia já contabilizaram — assim,
+  // ter mais de uma sessão no mesmo dia não conta o mesmo pagamento 2 vezes.
+  const alreadyClosedPortion = regs
+    .filter((r) => r.status === "fechado")
+    .reduce((s, r) => s + (r.closingSystemInflow || 0), 0);
+  const openRegSystemInflow = Math.max(dayTotalSystemInflow - alreadyClosedPortion, 0);
+
+  function summaryFor(reg: CashRegister) {
+    const inflow = reg.status === "aberto" ? openRegSystemInflow : reg.closingSystemInflow || 0;
+    return CashFlowService.computeBalance(reg, inflow);
+  }
 
   async function handleOpen(e: React.FormEvent) {
     e.preventDefault();
@@ -57,10 +67,12 @@ export default function CashFlow() {
 
   async function handleClose(e: React.FormEvent) {
     e.preventDefault();
+    if (!closeTarget) return;
     setError(null);
     try {
-      await CashFlowService.close(dateId, closingBalanceInput, { id: user!.id, name: user!.name });
-      setCloseModal(false);
+      const inflow = summaryFor(closeTarget).systemInflow;
+      await CashFlowService.close(closeTarget.id, closingBalanceInput, inflow, { id: user!.id, name: user!.name });
+      setCloseTarget(null);
     } catch (err: any) {
       setError(err.message);
     }
@@ -68,15 +80,16 @@ export default function CashFlow() {
 
   async function handleAddEntry(e: React.FormEvent) {
     e.preventDefault();
-    if (!entryModal) return;
+    if (!entryTarget) return;
     setError(null);
     try {
       await CashFlowService.addEntry(
-        dateId,
-        { type: entryModal, amount: entryAmount, description: entryDescription, userName: user!.name },
+        entryTarget.reg.id,
+        entryTarget.reg,
+        { type: entryTarget.type, amount: entryAmount, description: entryDescription, userName: user!.name },
         { id: user!.id, name: user!.name }
       );
-      setEntryModal(null);
+      setEntryTarget(null);
       setEntryAmount(0);
       setEntryDescription("");
     } catch (err: any) {
@@ -84,113 +97,137 @@ export default function CashFlow() {
     }
   }
 
+  async function handleDelete() {
+    if (!deleteTarget) return;
+    await CashFlowService.remove(deleteTarget.id, deleteTarget, { id: user!.id, name: user!.name });
+    setDeleteTarget(null);
+  }
+
   return (
     <div className="space-y-5 max-w-3xl">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="font-display text-2xl sm:text-3xl text-mist-100">Controle de caixa</h1>
-          <p className="text-sm text-mist-500">Abertura, movimentações e fechamento do dia.</p>
+          <p className="text-sm text-mist-500">Abertura, movimentações e fechamento do dia. Dá para abrir mais de um caixa no mesmo dia.</p>
         </div>
         <input type="date" value={dateId} onChange={(e) => setDateId(e.target.value)} />
       </div>
 
-      {!reg && can("cashFlow", "create") && (
-        <div className="card p-6 text-center space-y-3">
-          <p className="text-mist-500">O caixa deste dia ainda não foi aberto.</p>
-          <button className="btn-primary" onClick={() => setOpenModal(true)}>
-            Abrir caixa
+      {can("cashFlow", "create") && (
+        <div className="card p-4 flex items-center justify-between flex-wrap gap-3">
+          <p className="text-sm text-mist-500">
+            {openReg ? "Já há um caixa aberto neste dia — feche-o antes de abrir outro." : "Nenhum caixa aberto neste dia agora."}
+          </p>
+          <button className="btn-primary" onClick={() => setOpenModal(true)} disabled={Boolean(openReg)}>
+            + Abrir novo caixa
           </button>
         </div>
       )}
 
-      {reg && summary && (
-        <>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div className="card p-4">
-              <p className="text-xs text-mist-500">Saldo inicial</p>
-              <p className="text-lg font-display">{money(reg.openingBalance)}</p>
-            </div>
-            <div className="card p-4">
-              <p className="text-xs text-mist-500">Entradas (pedidos + manual)</p>
-              <p className="text-lg font-display text-success">{money(summary.systemInflow + summary.manualIn)}</p>
-            </div>
-            <div className="card p-4">
-              <p className="text-xs text-mist-500">Saídas / sangrias</p>
-              <p className="text-lg font-display text-danger">{money(summary.out)}</p>
-            </div>
-            <div className="card p-4">
-              <p className="text-xs text-mist-500">Saldo {reg.status === "aberto" ? "atual" : "final"}</p>
-              <p className="text-lg font-display text-diamond">
-                {money(reg.status === "fechado" ? reg.closingBalance || 0 : summary.balance)}
-              </p>
-            </div>
-          </div>
-
-          <p className="text-xs text-mist-500">
-            Status: <span className={reg.status === "aberto" ? "text-success" : "text-mist-300"}>{reg.status}</span> · aberto por{" "}
-            {reg.openedByName || "—"}
-            {reg.status === "fechado" && ` · fechado por ${reg.closedByName}`}
-          </p>
-
-          {reg.status === "aberto" && (
-            <div className="flex flex-wrap gap-2">
-              <button className="btn-secondary" onClick={() => setEntryModal("entrada")}>
-                + Entrada manual
-              </button>
-              <button className="btn-secondary" onClick={() => setEntryModal("saida")}>
-                + Saída
-              </button>
-              <button className="btn-secondary" onClick={() => setEntryModal("sangria")}>
-                + Sangria
-              </button>
-              <button
-                className="btn-primary ml-auto"
-                onClick={() => {
-                  setClosingBalanceInput(summary.balance);
-                  setCloseModal(true);
-                }}
-              >
-                Fechar caixa
-              </button>
-            </div>
-          )}
-
-          <div className="card overflow-x-auto">
-            <table className="table-shell">
-              <thead>
-                <tr>
-                  <th>Hora</th>
-                  <th>Tipo</th>
-                  <th>Descrição</th>
-                  <th>Valor</th>
-                  <th>Usuário</th>
-                </tr>
-              </thead>
-              <tbody>
-                {reg.entries
-                  .slice()
-                  .reverse()
-                  .map((e) => (
-                    <tr key={e.id}>
-                      <td>{new Date(e.createdAt).toLocaleTimeString("pt-BR")}</td>
-                      <td className="capitalize">{e.type}</td>
-                      <td>{e.description}</td>
-                      <td className={e.type === "entrada" ? "text-success" : "text-danger"}>{money(e.amount)}</td>
-                      <td>{e.userName}</td>
-                    </tr>
-                  ))}
-                {reg.entries.length === 0 && (
-                  <tr>
-                    <td colSpan={5} className="text-center text-mist-500 py-6">
-                      Nenhuma movimentação manual ainda. Os pagamentos de pedidos já entram automaticamente no saldo.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </>
+      {regs.length === 0 && (
+        <div className="card p-6 text-center">
+          <p className="text-mist-500">Nenhum caixa foi aberto neste dia ainda.</p>
+        </div>
       )}
+
+      <div className="space-y-4">
+        {regs.map((reg) => {
+          const summary = summaryFor(reg);
+          return (
+            <div key={reg.id} className="card p-4 space-y-4">
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <p className="text-xs text-mist-500">
+                  Status: <span className={reg.status === "aberto" ? "text-success" : "text-mist-300"}>{reg.status}</span> · aberto por{" "}
+                  {reg.openedByName || "—"}
+                  {reg.status === "fechado" && ` · fechado por ${reg.closedByName}`}
+                </p>
+                {isAdmin && (
+                  <button className="btn-ghost !px-2 !py-1 text-xs text-danger" onClick={() => setDeleteTarget(reg)}>
+                    Excluir este caixa
+                  </button>
+                )}
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="card p-4">
+                  <p className="text-xs text-mist-500">Saldo inicial</p>
+                  <p className="text-lg font-display">{money(reg.openingBalance)}</p>
+                </div>
+                <div className="card p-4">
+                  <p className="text-xs text-mist-500">Entradas (pedidos + manual)</p>
+                  <p className="text-lg font-display text-success">{money(summary.systemInflow + summary.manualIn)}</p>
+                </div>
+                <div className="card p-4">
+                  <p className="text-xs text-mist-500">Saídas / sangrias</p>
+                  <p className="text-lg font-display text-danger">{money(summary.out)}</p>
+                </div>
+                <div className="card p-4">
+                  <p className="text-xs text-mist-500">Saldo {reg.status === "aberto" ? "atual" : "final"}</p>
+                  <p className="text-lg font-display text-diamond">{money(reg.status === "fechado" ? reg.closingBalance || 0 : summary.balance)}</p>
+                </div>
+              </div>
+
+              {reg.status === "aberto" && (
+                <div className="flex flex-wrap gap-2">
+                  <button className="btn-secondary" onClick={() => setEntryTarget({ reg, type: "entrada" })}>
+                    + Entrada manual
+                  </button>
+                  <button className="btn-secondary" onClick={() => setEntryTarget({ reg, type: "saida" })}>
+                    + Saída
+                  </button>
+                  <button className="btn-secondary" onClick={() => setEntryTarget({ reg, type: "sangria" })}>
+                    + Sangria
+                  </button>
+                  <button
+                    className="btn-primary ml-auto"
+                    onClick={() => {
+                      setClosingBalanceInput(summary.balance);
+                      setCloseTarget(reg);
+                    }}
+                  >
+                    Fechar caixa
+                  </button>
+                </div>
+              )}
+
+              <div className="overflow-x-auto">
+                <table className="table-shell">
+                  <thead>
+                    <tr>
+                      <th>Hora</th>
+                      <th>Tipo</th>
+                      <th>Descrição</th>
+                      <th>Valor</th>
+                      <th>Usuário</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {reg.entries
+                      .slice()
+                      .reverse()
+                      .map((e) => (
+                        <tr key={e.id}>
+                          <td>{new Date(e.createdAt).toLocaleTimeString("pt-BR")}</td>
+                          <td className="capitalize">{e.type}</td>
+                          <td>{e.description}</td>
+                          <td className={e.type === "entrada" ? "text-success" : "text-danger"}>{money(e.amount)}</td>
+                          <td>{e.userName}</td>
+                        </tr>
+                      ))}
+                    {reg.entries.length === 0 && (
+                      <tr>
+                        <td colSpan={5} className="text-center text-mist-500 py-6">
+                          Nenhuma movimentação manual ainda. Os pagamentos de pedidos já entram automaticamente no saldo.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          );
+        })}
+      </div>
 
       {/* Abrir caixa */}
       <Modal open={openModal} onClose={() => setOpenModal(false)} title="Abrir caixa">
@@ -212,21 +249,16 @@ export default function CashFlow() {
       </Modal>
 
       {/* Fechar caixa */}
-      <Modal open={closeModal} onClose={() => setCloseModal(false)} title="Fechar caixa">
+      <Modal open={Boolean(closeTarget)} onClose={() => setCloseTarget(null)} title="Fechar caixa">
         <form onSubmit={handleClose} className="space-y-4">
           <p className="text-sm text-mist-500">Saldo calculado pelo sistema, confira antes de confirmar:</p>
           <div>
             <label>Saldo final (R$)</label>
-            <input
-              type="number"
-              step="0.01"
-              value={closingBalanceInput}
-              onChange={(e) => setClosingBalanceInput(Number(e.target.value))}
-            />
+            <input type="number" step="0.01" value={closingBalanceInput} onChange={(e) => setClosingBalanceInput(Number(e.target.value))} />
           </div>
           {error && <p className="text-sm text-danger">{error}</p>}
           <div className="flex justify-end gap-2">
-            <button type="button" className="btn-secondary" onClick={() => setCloseModal(false)}>
+            <button type="button" className="btn-secondary" onClick={() => setCloseTarget(null)}>
               Cancelar
             </button>
             <button type="submit" className="btn-primary">
@@ -238,9 +270,9 @@ export default function CashFlow() {
 
       {/* Lançamento manual */}
       <Modal
-        open={Boolean(entryModal)}
-        onClose={() => setEntryModal(null)}
-        title={entryModal === "entrada" ? "Nova entrada" : entryModal === "saida" ? "Nova saída" : "Registrar sangria"}
+        open={Boolean(entryTarget)}
+        onClose={() => setEntryTarget(null)}
+        title={entryTarget?.type === "entrada" ? "Nova entrada" : entryTarget?.type === "saida" ? "Nova saída" : "Registrar sangria"}
       >
         <form onSubmit={handleAddEntry} className="space-y-4">
           <div>
@@ -253,7 +285,7 @@ export default function CashFlow() {
           </div>
           {error && <p className="text-sm text-danger">{error}</p>}
           <div className="flex justify-end gap-2">
-            <button type="button" className="btn-secondary" onClick={() => setEntryModal(null)}>
+            <button type="button" className="btn-secondary" onClick={() => setEntryTarget(null)}>
               Cancelar
             </button>
             <button type="submit" className="btn-primary">
@@ -262,6 +294,15 @@ export default function CashFlow() {
           </div>
         </form>
       </Modal>
+
+      <ConfirmDialog
+        open={Boolean(deleteTarget)}
+        title="Excluir caixa"
+        message={`Excluir o caixa de ${deleteTarget?.date} (status "${deleteTarget?.status}") por completo? Essa ação não pode ser desfeita.`}
+        onConfirm={handleDelete}
+        onCancel={() => setDeleteTarget(null)}
+        danger
+      />
     </div>
   );
 }

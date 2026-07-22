@@ -29,6 +29,8 @@ export function OrderForm({
   const [clientCategoryNotes, setClientCategoryNotes] = useState(existingOrder?.clientCategoryNotes || "");
   const [items, setItems] = useState<OrderItem[]>(existingOrder?.items || []);
   const [pickProductId, setPickProductId] = useState("");
+  const [productSearchTerm, setProductSearchTerm] = useState("");
+  const [productSearchTerm, setProductSearchTerm] = useState("");
   const [pickQty, setPickQty] = useState(1);
   const [pickComponents, setPickComponents] = useState<string[]>([]);
 
@@ -77,6 +79,13 @@ export function OrderForm({
 
   const client = clients.find((c) => c.id === clientId);
   const pickProduct = products.find((p) => p.id === pickProductId);
+  const term = productSearchTerm.trim().toLowerCase();
+  const filteredProducts = term
+    ? products.filter((p) =>
+        [p.name, p.internalCode, p.brand, p.category, p.color].some((f) => (f || "").toLowerCase().includes(term))
+      )
+    : products;
+  const filteredProducts = useMemo(() => ProductService.search(products, productSearchTerm), [products, productSearchTerm]);
   const totalPaidSoFar = isEdit ? existingOrder!.amountPaid : payments.reduce((s, p) => s + p.amount, 0);
   const totals = useMemo(() => calcTotals({ items, discount, surcharge, creditUsed, amountPaid: totalPaidSoFar }), [
     items,
@@ -153,6 +162,7 @@ export function OrderForm({
     setPickProductId("");
     setPickQty(1);
     setPickComponents([]);
+    setProductSearchTerm("");
     setConflicts([]);
     setConflictsAcknowledged(false);
   }
@@ -405,7 +415,17 @@ export function OrderForm({
         <p className="font-display text-lg">Produtos</p>
         <div className="flex flex-wrap gap-2 items-end">
           <div className="flex-1 min-w-[220px]">
-            <label>Produto</label>
+            <label>Buscar produto</label>
+            <input
+              value={productSearchTerm}
+              onChange={(e) => setProductSearchTerm(e.target.value)}
+              placeholder="Nome, código, marca, cor..."
+            />
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-2 items-end">
+          <div className="flex-1 min-w-[220px]">
+            <label>Produto {productSearchTerm && `(${filteredProducts.length} encontrado(s))`}</label>
             <select
               value={pickProductId}
               onChange={(e) => {
@@ -414,7 +434,7 @@ export function OrderForm({
               }}
             >
               <option value="">Selecione...</option>
-              {products.map((p) => (
+              {filteredProducts.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.name} ({p.internalCode}) — disp. {p.availableQuantity}
                   {p.componentNames && p.componentNames.length > 0 ? " — por peça" : ""}

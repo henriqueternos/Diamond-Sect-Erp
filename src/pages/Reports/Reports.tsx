@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { OrderService } from "../../services/OrderService";
 import { ProductService } from "../../services/ProductService";
 import { ClientService } from "../../services/ClientService";
+import { CashFlowService } from "../../services/CashFlowService";
 import { exportTableExcel, exportTablePdf, ExportColumn } from "../../services/ExportService";
 import { openPrintWindow } from "../../services/DocumentService";
 import {
@@ -14,6 +15,7 @@ import {
   PaymentMethod,
   Product,
   PRODUCT_STATUS_LABELS,
+  CashRegister,
 } from "../../types";
 
 function money(v: number) {
@@ -55,6 +57,7 @@ export default function Reports() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
+  const [cashRegs, setCashRegs] = useState<CashRegister[]>([]);
 
   const [rangeStart, setRangeStart] = useState("");
   const [rangeEnd, setRangeEnd] = useState("");
@@ -73,6 +76,29 @@ export default function Reports() {
   useEffect(() => OrderService.subscribeAll(setOrders), []);
   useEffect(() => ProductService.subscribeAll(setProducts), []);
   useEffect(() => ClientService.subscribeAll(setClients), []);
+  useEffect(() => CashFlowService.subscribeAll(setCashRegs), []);
+
+  // Resumo do Caixa, respeitando o mesmo período (Data inicial/final) do
+  // restante do relatório — para dar uma visão financeira completa, não só
+  // de pedidos.
+  const cashRows = useMemo(() => {
+    return cashRegs
+      .filter((r) => (!rangeStart || r.date >= rangeStart) && (!rangeEnd || r.date <= rangeEnd))
+      .sort((a, b) => (a.date < b.date ? 1 : -1));
+  }, [cashRegs, rangeStart, rangeEnd]);
+
+  const cashSummary = useMemo(() => {
+    const openingSum = cashRows.reduce((s, r) => s + r.openingBalance, 0);
+    const manualIn = cashRows.reduce((s, r) => s + r.entries.filter((e) => e.type === "entrada").reduce((a, e) => a + e.amount, 0), 0);
+    const out = cashRows.reduce(
+      (s, r) => s + r.entries.filter((e) => e.type === "saida" || e.type === "sangria").reduce((a, e) => a + e.amount, 0),
+      0
+    );
+    const systemIn = cashRows.filter((r) => r.status === "fechado").reduce((s, r) => s + (r.closingSystemInflow || 0), 0);
+    const closedFinal = cashRows.filter((r) => r.status === "fechado").reduce((s, r) => s + (r.closingBalance || 0), 0);
+    const openCount = cashRows.filter((r) => r.status === "aberto").length;
+    return { openingSum, manualIn, out, systemIn, closedFinal, openCount };
+  }, [cashRows]);
 
   const productById = useMemo(() => new Map(products.map((p) => [p.id, p])), [products]);
   const sellers = useMemo(() => [...new Set(orders.map((o) => o.sellerName).filter(Boolean))] as string[], [orders]);
@@ -395,6 +421,31 @@ export default function Reports() {
             <br />
             {topSeller ? `${topSeller[0]} (${topSeller[1]})` : "—"}
           </p>
+        </div>
+      </div>
+
+      <div>
+        <p className="text-xs text-mist-500 mb-2">
+          Resumo do Caixa no período{rangeStart || rangeEnd ? "" : " (todos os registros)"} — {cashRows.length} caixa(s),{" "}
+          {cashSummary.openCount} ainda aberto(s)
+        </p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="card p-3">
+            <p className="text-xs text-mist-500">Saldo inicial somado</p>
+            <p className="text-xl font-display">{money(cashSummary.openingSum)}</p>
+          </div>
+          <div className="card p-3">
+            <p className="text-xs text-mist-500">Entradas (pedidos + manual)</p>
+            <p className="text-xl font-display text-success">{money(cashSummary.systemIn + cashSummary.manualIn)}</p>
+          </div>
+          <div className="card p-3">
+            <p className="text-xs text-mist-500">Saídas / sangrias</p>
+            <p className="text-xl font-display text-danger">{money(cashSummary.out)}</p>
+          </div>
+          <div className="card p-3">
+            <p className="text-xs text-mist-500">Saldo final (caixas já fechados)</p>
+            <p className="text-xl font-display text-diamond">{money(cashSummary.closedFinal)}</p>
+          </div>
         </div>
       </div>
 
