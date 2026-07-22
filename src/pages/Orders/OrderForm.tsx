@@ -30,7 +30,6 @@ export function OrderForm({
   const [items, setItems] = useState<OrderItem[]>(existingOrder?.items || []);
   const [pickProductId, setPickProductId] = useState("");
   const [productSearchTerm, setProductSearchTerm] = useState("");
-  const [productSearchTerm, setProductSearchTerm] = useState("");
   const [pickQty, setPickQty] = useState(1);
   const [pickComponents, setPickComponents] = useState<string[]>([]);
 
@@ -79,12 +78,6 @@ export function OrderForm({
 
   const client = clients.find((c) => c.id === clientId);
   const pickProduct = products.find((p) => p.id === pickProductId);
-  const term = productSearchTerm.trim().toLowerCase();
-  const filteredProducts = term
-    ? products.filter((p) =>
-        [p.name, p.internalCode, p.brand, p.category, p.color].some((f) => (f || "").toLowerCase().includes(term))
-      )
-    : products;
   const filteredProducts = useMemo(() => ProductService.search(products, productSearchTerm), [products, productSearchTerm]);
   const totalPaidSoFar = isEdit ? existingOrder!.amountPaid : payments.reduce((s, p) => s + p.amount, 0);
   const totals = useMemo(() => calcTotals({ items, discount, surcharge, creditUsed, amountPaid: totalPaidSoFar }), [
