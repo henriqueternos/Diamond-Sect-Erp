@@ -72,7 +72,6 @@ export default function Login() {
               autoFocus
               value={username}
               onChange={(e) => setUsername(e.target.value)}
-              placeholder="Ex: Henrique"
               required
             />
           </div>
@@ -120,7 +119,7 @@ export default function Login() {
         <form onSubmit={handleReset} className="space-y-4">
           <div>
             <label>Usuário</label>
-            <input required value={resetUsername} onChange={(e) => setResetUsername(e.target.value)} placeholder="Ex: Henrique" />
+            <input required value={resetUsername} onChange={(e) => setResetUsername(e.target.value)} />
           </div>
           <p className="text-xs text-mist-500">Enviaremos um link de redefinição para o e-mail vinculado a esse usuário.</p>
           {resetMsg && (
