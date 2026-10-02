@@ -241,7 +241,7 @@ export default function ProductsList() {
       }
       const parsed: ImportRow[] = rawRows.map((row) => {
         const code = cell(row, "Código", "Codigo", "internalCode");
-        const name = cell(row, "Nome", "name");
+        const name = cell(row, "Nome", "name", "Nome do produto", "Nome Produto", "Produto");
         if (!code || !name) {
           return { code: code || "—", name: name || "—", data: {}, action: "create", error: "Faltando Nome ou Código nesta linha — não será importada." };
         }
@@ -250,6 +250,15 @@ export default function ProductsList() {
         const componentNames = componentsRaw
           ? componentsRaw.split(",").map((s) => s.trim()).filter(Boolean)
           : undefined;
+
+        // Colunas do tipo "Componente — Calça" (uma nota sobre qual peça
+        // combina com este produto, ex.: tamanho da calça de um terno) não
+        // são a mesma coisa que "Componentes" (que ativa a locação por
+        // peça) — mas não devem se perder: viram parte das observações.
+        const extraNotes = Object.keys(row)
+          .filter((k) => /^componente\s*[—-]/i.test(k.trim()) && String(row[k]).trim() !== "")
+          .map((k) => `${k.replace(/^componente\s*[—-]\s*/i, "").trim()}: ${String(row[k]).trim()}`)
+          .join(" · ");
 
         const toNumber = (v: any) => {
           // Number("") dá 0 em JavaScript (não "vazio"), o que fazia uma
@@ -273,7 +282,7 @@ export default function ProductsList() {
           // que já está comprometido).
           const data: Partial<Product> = {
             name,
-            productType: cell(row, "Tipo", "productType") || existing.productType,
+            productType: cell(row, "Tipo", "productType", "Tipo do produto") || existing.productType,
             category: cell(row, "Categoria", "category") || existing.category,
             subcategory: cell(row, "Subcategoria", "subcategory") || existing.subcategory,
             brand: cell(row, "Marca", "brand") || existing.brand,
@@ -282,10 +291,10 @@ export default function ProductsList() {
             gender: cell(row, "Gênero", "Genero", "gender") || existing.gender,
             material: cell(row, "Material", "material") || existing.material,
             supplier: cell(row, "Fornecedor", "supplier") || existing.supplier,
-            notes: cell(row, "Observações", "Observacoes", "notes") || existing.notes,
+            notes: [cell(row, "Observações", "Observacoes", "notes") || existing.notes, extraNotes].filter(Boolean).join(" · "),
           };
           const cost = toNumber(cell(row, "Valor de custo", "costValue"));
-          const rent = toNumber(cell(row, "Valor de locação", "Valor de locacao", "rentValue"));
+          const rent = toNumber(cell(row, "Valor de locação", "Valor de locacao", "rentValue", "Valor aluguel (R$)", "Valor aluguel", "Valor de aluguel"));
           const sale = toNumber(cell(row, "Valor de venda", "saleValue"));
           if (cost !== undefined) data.costValue = cost;
           if (rent !== undefined) data.rentValue = rent;
@@ -307,7 +316,7 @@ export default function ProductsList() {
         const data: Partial<Product> = {
           name,
           internalCode: code,
-          productType: cell(row, "Tipo", "productType"),
+          productType: cell(row, "Tipo", "productType", "Tipo do produto"),
           category: cell(row, "Categoria", "category"),
           subcategory: cell(row, "Subcategoria", "subcategory"),
           brand: cell(row, "Marca", "brand"),
@@ -316,9 +325,9 @@ export default function ProductsList() {
           gender: cell(row, "Gênero", "Genero", "gender"),
           material: cell(row, "Material", "material"),
           supplier: cell(row, "Fornecedor", "supplier"),
-          notes: cell(row, "Observações", "Observacoes", "notes"),
+          notes: [cell(row, "Observações", "Observacoes", "notes"), extraNotes].filter(Boolean).join(" · "),
           costValue: toNumber(cell(row, "Valor de custo", "costValue")) || 0,
-          rentValue: toNumber(cell(row, "Valor de locação", "Valor de locacao", "rentValue")) || 0,
+          rentValue: toNumber(cell(row, "Valor de locação", "Valor de locacao", "rentValue", "Valor aluguel (R$)", "Valor aluguel", "Valor de aluguel")) || 0,
           saleValue: toNumber(cell(row, "Valor de venda", "saleValue")) || 0,
           totalQuantity: total,
           availableQuantity: total,

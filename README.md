@@ -1178,3 +1178,22 @@ Conferido também: todas as regras do Firestore continuam cobrindo
 corretamente as coleções novas/alteradas (contratos separados, caixa com
 múltiplos registros por dia) sem precisar de nenhuma mudança adicional nas
 regras — o arquivo `firestore.rules` já está com tudo coberto.
+
+## Correção: importação não reconhecia "Nome do produto" e outras colunas
+
+O usuário mandou uma planilha real de teste e achamos o problema: o nome
+da coluna era **"Nome do produto"**, mas o sistema só reconhecia "Nome"
+(exatamente). Ampliado o reconhecimento de colunas na importação do
+Estoque para aceitar bem mais variações comuns de nome:
+
+- **Nome:** "Nome", "Nome do produto", "Nome Produto", "Produto"
+- **Tipo:** "Tipo", "Tipo do produto"
+- **Valor de locação:** "Valor de locação", "Valor aluguel (R$)", "Valor
+  aluguel", "Valor de aluguel"
+- (Quantidade e demais campos já tinham sido ampliados antes)
+
+Também: colunas extras que não se encaixam em nenhum campo conhecido, mas
+começam com "Componente — " (ex.: "Componente — Calça", usada para anotar
+qual calça combina com qual terno), agora são guardadas automaticamente
+nas Observações do produto, em vez de serem simplesmente ignoradas/
+perdidas na importação.
