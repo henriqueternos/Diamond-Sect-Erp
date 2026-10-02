@@ -13,12 +13,17 @@ import { isToday } from "../../utils/dates";
 
 export default function Dashboard() {
   const navigate = useNavigate();
-  const { user, can } = useAuth();
+  const { user, can, isAdmin } = useAuth();
   const [clients, setClients] = useState<Client[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [cashRegs, setCashRegs] = useState<CashRegister[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
+  const [period, setPeriod] = useState<"hoje" | "semana" | "mes" | "personalizado">("hoje");
+  const [customStart, setCustomStart] = useState(() => new Date().toISOString().slice(0, 10));
+  const [customEnd, setCustomEnd] = useState(() => new Date().toISOString().slice(0, 10));
+
+  const isManagerOrAdmin = isAdmin || user?.role === "manager";
 
   useEffect(() => {
     const u1 = ClientService.subscribeAll(setClients);
@@ -46,8 +51,38 @@ export default function Dashboard() {
   // Pedido cancelado não deve contar em nenhum total financeiro — como se
   // ele nunca tivesse existido para fins de valores.
   const moneyOrders = orders.filter((o) => o.status !== "cancelado");
-  const openBalance = moneyOrders.reduce((sum, o) => sum + (o.openValue || 0), 0);
-  const receivedTotal = moneyOrders.reduce((sum, o) => sum + (o.amountPaid || 0), 0);
+
+  // Período selecionado (Hoje / Semana / Mês / Personalizado) — calculado
+  // sempre a partir de hoje, exceto no personalizado, que usa as datas
+  // escolhidas no calendário.
+  const { periodStart, periodEnd } = (() => {
+    const todayStr = CashFlowService.todayId();
+    if (period === "personalizado") return { periodStart: customStart, periodEnd: customEnd };
+    if (period === "hoje") return { periodStart: todayStr, periodEnd: todayStr };
+    const now = new Date();
+    if (period === "semana") {
+      const dayOfWeek = now.getDay(); // 0 = domingo
+      const diffToMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+      const monday = new Date(now);
+      monday.setDate(now.getDate() - diffToMonday);
+      return { periodStart: monday.toISOString().slice(0, 10), periodEnd: todayStr };
+    }
+    // mês
+    const firstOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    return { periodStart: firstOfMonth.toISOString().slice(0, 10), periodEnd: todayStr };
+  })();
+
+  // "Valor recebido" no período = pagamentos lançados com data dentro do
+  // período (mesma lógica usada no Financeiro).
+  const receivedTotal = payments
+    .filter((p) => p.date >= periodStart && p.date <= periodEnd && moneyOrders.some((o) => o.id === p.orderId))
+    .reduce((s, p) => s + p.amount, 0);
+
+  // "Valor em aberto" no período = soma do que ainda falta receber dos
+  // pedidos CRIADOS dentro do período selecionado.
+  const openBalance = moneyOrders
+    .filter((o) => o.orderDate >= periodStart && o.orderDate <= periodEnd)
+    .reduce((sum, o) => sum + (o.openValue || 0), 0);
 
   const recentOrders = orders.slice(0, 6);
 
@@ -92,19 +127,61 @@ export default function Dashboard() {
         <p className="text-sm text-mist-500">Dados em tempo real do Firestore.</p>
       </div>
 
+      {isManagerOrAdmin && (
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="flex gap-1.5">
+            {([
+              ["hoje", "Hoje"],
+              ["semana", "Semana"],
+              ["mes", "Mês"],
+              ["personalizado", "Personalizado"],
+            ] as const).map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setPeriod(value)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
+                  period === value
+                    ? "bg-diamond/10 text-diamond border-diamond/30"
+                    : "text-mist-500 border-ink-600 hover:text-mist-100 hover:bg-ink-700"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          {period === "personalizado" && (
+            <div className="flex items-end gap-2">
+              <div>
+                <label>De</label>
+                <input type="date" value={customStart} onChange={(e) => setCustomStart(e.target.value)} />
+              </div>
+              <div>
+                <label>Até</label>
+                <input type="date" value={customEnd} onChange={(e) => setCustomEnd(e.target.value)} />
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
-        <div className="card p-5">
-          <p className="text-xs uppercase tracking-wide text-mist-500 mb-1">Valor recebido</p>
-          <p className="text-2xl font-display text-success">
-            {receivedTotal.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
-          </p>
-        </div>
-        <div className="card p-5">
-          <p className="text-xs uppercase tracking-wide text-mist-500 mb-1">Valor em aberto</p>
-          <p className="text-2xl font-display text-warn">
-            {openBalance.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
-          </p>
-        </div>
+        {isManagerOrAdmin && (
+          <>
+            <div className="card p-5">
+              <p className="text-xs uppercase tracking-wide text-mist-500 mb-1">Valor recebido</p>
+              <p className="text-2xl font-display text-success">
+                {receivedTotal.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+              </p>
+            </div>
+            <div className="card p-5">
+              <p className="text-xs uppercase tracking-wide text-mist-500 mb-1">Valor em aberto</p>
+              <p className="text-2xl font-display text-warn">
+                {openBalance.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+              </p>
+            </div>
+          </>
+        )}
         <div className="card p-5 cursor-pointer hover:border-diamond/40" onClick={() => navigate("/caixa")}>
           <p className="text-xs uppercase tracking-wide text-mist-500 mb-1">{cashCardLabel}</p>
           <p className="text-2xl font-display text-diamond">

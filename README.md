@@ -1052,3 +1052,21 @@ Na tela de Estoque, dois botões novos:
 
 Nada é salvo até você clicar em "Confirmar importação" na tela de
 conferência.
+
+## Dashboard: Valor recebido e Valor em aberto por período, só admin/gerente
+
+Os cartões "Valor recebido" e "Valor em aberto" do Dashboard agora:
+
+- **Aparecem por padrão com o resultado de hoje**, não mais o total
+  acumulado desde o início.
+- Têm botões para trocar entre **Hoje / Semana / Mês / Personalizado**.
+  "Semana" conta da segunda-feira até hoje; "Mês" conta do dia 1 até hoje.
+- No modo **Personalizado**, aparece um calendário (data inicial e data
+  final) para escolher qualquer intervalo.
+- **Só aparecem para administrador ou gerente** — vendedores e assistentes
+  não veem mais esses dois cartões no Dashboard (os outros dois, Caixa e
+  Base cadastrada, continuam visíveis para todo mundo).
+
+"Valor recebido" soma os pagamentos lançados com data dentro do período;
+"Valor em aberto" soma o que falta receber dos pedidos criados dentro do
+período selecionado.
