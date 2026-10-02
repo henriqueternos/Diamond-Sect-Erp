@@ -54,6 +54,7 @@ export function OrderForm({
   const [internalNotes, setInternalNotes] = useState(existingOrder?.internalNotes || "");
 
   const [conflicts, setConflicts] = useState<ConflictInfo[]>([]);
+  const [conflictCheckDone, setConflictCheckDone] = useState(false);
   const [checkingConflicts, setCheckingConflicts] = useState(false);
   const [overrideReason, setOverrideReason] = useState("");
   const [conflictsAcknowledged, setConflictsAcknowledged] = useState(false);
@@ -169,6 +170,7 @@ export function OrderForm({
     setPickComponents([]);
     setProductSearchTerm("");
     setConflicts([]);
+    setConflictCheckDone(false);
     setConflictsAcknowledged(false);
   }
 
@@ -178,15 +180,30 @@ export function OrderForm({
 
   function removeItem(index: number) {
     setItems((prev) => prev.filter((_, i) => i !== index));
+    setConflicts([]);
+    setConflictCheckDone(false);
+    setConflictsAcknowledged(false);
   }
 
   async function handleCheckConflicts() {
-    if (items.length === 0 || !pickupDate || !returnDate) return;
+    setErrorMsg(null);
+    setConflictCheckDone(false);
+    if (items.length === 0) {
+      setErrorMsg("Adicione ao menos um produto antes de verificar disponibilidade.");
+      return;
+    }
+    if (!pickupDate || !returnDate) {
+      setErrorMsg('Preencha "Data da retirada" e "Data da devolução" antes de verificar disponibilidade.');
+      return;
+    }
     setCheckingConflicts(true);
     try {
       const found = await OrderService.checkConflicts(items, { pickupDate, returnDate, fittingDate, eventDate }, 1);
       setConflicts(found);
       setConflictsAcknowledged(false);
+      setConflictCheckDone(true);
+    } catch (err: any) {
+      setErrorMsg(err.message || "Não foi possível verificar a disponibilidade agora. Tente de novo.");
     } finally {
       setCheckingConflicts(false);
     }
@@ -558,11 +575,25 @@ export function OrderForm({
         </div>
         <div>
           <label>Data da retirada</label>
-          <input type="date" value={pickupDate} onChange={(e) => setPickupDate(e.target.value)} />
+          <input
+            type="date"
+            value={pickupDate}
+            onChange={(e) => {
+              setPickupDate(e.target.value);
+              setConflictCheckDone(false);
+            }}
+          />
         </div>
         <div>
           <label>Data da devolução</label>
-          <input type="date" value={returnDate} onChange={(e) => setReturnDate(e.target.value)} />
+          <input
+            type="date"
+            value={returnDate}
+            onChange={(e) => {
+              setReturnDate(e.target.value);
+              setConflictCheckDone(false);
+            }}
+          />
         </div>
         <div className="flex items-end">
           <button type="button" className="btn-secondary w-full" onClick={handleCheckConflicts} disabled={checkingConflicts}>
@@ -570,6 +601,12 @@ export function OrderForm({
           </button>
         </div>
       </div>
+
+      {conflictCheckDone && conflicts.length === 0 && (
+        <div className="card p-4 border-success/50">
+          <p className="text-success font-semibold text-sm">✓ Sem conflitos — todos os itens estão disponíveis para esse período.</p>
+        </div>
+      )}
 
       {conflicts.length > 0 && (
         <div className="card p-4 border-danger/50 space-y-3">

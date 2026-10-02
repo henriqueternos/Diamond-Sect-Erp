@@ -1082,3 +1082,20 @@ perde 2. O que já está reservado, em prova ou alugado nunca é mexido. A
 tela de conferência antes de importar mostra exatamente essa mudança
 ("Quantidade: 3 → 5 (+2 no disponível)") linha por linha, antes de
 confirmar.
+
+## Correção: "Verificar disponibilidade" parecia não fazer nada
+
+Bug real: ao clicar em "Verificar disponibilidade" sem ter preenchido
+"Data da retirada"/"Data da devolução" ainda (ou sem ter adicionado nenhum
+produto), o botão simplesmente não fazia nada — sem nenhum aviso do
+motivo. E mesmo quando a verificação rodava certinho e não achava nenhum
+conflito, também não aparecia nenhuma confirmação — então, nos dois casos,
+parecia que o botão "não mostrava resultado nenhum".
+
+Corrigido:
+- Falta produto ou falta data → mensagem clara explicando o que falta
+  preencher antes de verificar.
+- Verificação roda e não acha conflito → aparece uma confirmação verde
+  "✓ Sem conflitos — todos os itens estão disponíveis para esse período."
+- Mudar as datas ou os produtos depois de verificar limpa esse resultado
+  automaticamente, para nunca mostrar uma confirmação desatualizada.
