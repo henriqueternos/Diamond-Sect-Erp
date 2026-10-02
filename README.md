@@ -1022,3 +1022,12 @@ Pedido — filtra por nome, CPF, telefone, WhatsApp, e-mail ou cidade
 enquanto você digita, mostrando quantos resultados encontrou. (Na edição
 de um pedido já criado, o cliente continua travado — não editável — então
 a busca não aparece ali, só na criação de um pedido novo.)
+
+## Parcelas (1x a 12x) no pagamento com cartão de crédito
+
+Ao escolher "Cartão de crédito" como forma de pagamento — tanto na criação
+de um pedido novo quanto ao lançar um pagamento num pedido já existente —
+aparece um campo **"Parcelas"** com opções de 1x até 12x. Fica salvo junto
+com o pagamento e aparece no histórico de pagamentos do pedido. Não
+aparece pra Pix, Dinheiro, Débito ou Crédito do cliente, só faz sentido
+pra cartão de crédito mesmo.

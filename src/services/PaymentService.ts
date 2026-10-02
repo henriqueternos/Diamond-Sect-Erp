@@ -43,7 +43,7 @@ export const PaymentService = {
    * dois vendedores) nunca sobrescreverem um ao outro. */
   async register(
     order: { id: string },
-    data: { amount: number; method: PaymentMethod; cardBrand?: string; date: string },
+    data: { amount: number; method: PaymentMethod; cardBrand?: string; installments?: number; date: string },
     user: { id: string; name: string }
   ) {
     if (data.amount <= 0) throw new Error("Informe um valor de pagamento maior que zero.");
@@ -71,6 +71,7 @@ export const PaymentService = {
         amount: data.amount,
         method: data.method,
         cardBrand: data.cardBrand || null,
+        installments: data.method === "credito" ? data.installments || 1 : null,
         date: data.date,
         registeredBy: user.id,
         registeredByName: user.name,

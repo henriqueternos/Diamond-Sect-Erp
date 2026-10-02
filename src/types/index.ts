@@ -285,6 +285,8 @@ export interface Payment {
   amount: number;
   method: PaymentMethod;
   cardBrand?: string;
+  /** Só relevante para "credito" — em quantas vezes a compra foi parcelada (1 a 12). */
+  installments?: number;
   date: string; // YYYY-MM-DD
   registeredBy: string;
   registeredByName: string;

@@ -45,10 +45,11 @@ export function OrderForm({
   const [discount, setDiscount] = useState(existingOrder?.discount || 0);
   const [surcharge, setSurcharge] = useState(existingOrder?.surcharge || 0);
   const [creditUsed, setCreditUsed] = useState(existingOrder?.creditUsed || 0);
-  const [payments, setPayments] = useState<{ amount: number; method: PaymentMethod; cardBrand?: string }[]>([]);
+  const [payments, setPayments] = useState<{ amount: number; method: PaymentMethod; cardBrand?: string; installments?: number }[]>([]);
   const [pickPaymentAmount, setPickPaymentAmount] = useState(0);
   const [pickPaymentMethod, setPickPaymentMethod] = useState<PaymentMethod>("pix");
   const [pickCardBrand, setPickCardBrand] = useState("");
+  const [pickInstallments, setPickInstallments] = useState(1);
   const [orderDetails, setOrderDetails] = useState(existingOrder?.orderDetails || "");
   const [internalNotes, setInternalNotes] = useState(existingOrder?.internalNotes || "");
 
@@ -92,9 +93,18 @@ export function OrderForm({
 
   function addPayment() {
     if (pickPaymentAmount <= 0) return;
-    setPayments((prev) => [...prev, { amount: pickPaymentAmount, method: pickPaymentMethod, cardBrand: pickCardBrand || undefined }]);
+    setPayments((prev) => [
+      ...prev,
+      {
+        amount: pickPaymentAmount,
+        method: pickPaymentMethod,
+        cardBrand: pickCardBrand || undefined,
+        ...(pickPaymentMethod === "credito" ? { installments: pickInstallments } : {}),
+      },
+    ]);
     setPickPaymentAmount(0);
     setPickCardBrand("");
+    setPickInstallments(1);
   }
 
   function removePayment(index: number) {
@@ -307,7 +317,7 @@ export function OrderForm({
       for (const p of payments) {
         await PaymentService.register(
           { id: created.id },
-          { amount: p.amount, method: p.method, cardBrand: p.cardBrand, date: orderDate },
+          { amount: p.amount, method: p.method, cardBrand: p.cardBrand, installments: p.installments, date: orderDate },
           { id: user!.id, name: user!.name }
         );
       }
@@ -660,6 +670,18 @@ export function OrderForm({
                 <input value={pickCardBrand} onChange={(e) => setPickCardBrand(e.target.value)} placeholder="Ex: Visa" />
               </div>
             )}
+            {pickPaymentMethod === "credito" && (
+              <div className="w-32">
+                <label>Parcelas</label>
+                <select value={pickInstallments} onChange={(e) => setPickInstallments(Number(e.target.value))}>
+                  {Array.from({ length: 12 }, (_, i) => i + 1).map((n) => (
+                    <option key={n} value={n}>
+                      {n}x
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
             <button type="button" className="btn-secondary" onClick={addPayment} disabled={pickPaymentAmount <= 0}>
               + Lançar pagamento
             </button>
@@ -672,6 +694,7 @@ export function OrderForm({
                 <tr>
                   <th>Forma</th>
                   <th>Bandeira</th>
+                  <th>Parcelas</th>
                   <th>Valor</th>
                   <th></th>
                 </tr>
@@ -681,6 +704,7 @@ export function OrderForm({
                   <tr key={idx}>
                     <td>{PAYMENT_METHOD_LABELS[p.method]}</td>
                     <td>{p.cardBrand || "—"}</td>
+                    <td>{p.installments ? `${p.installments}x` : "—"}</td>
                     <td>{p.amount.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</td>
                     <td>
                       <button type="button" className="btn-ghost !px-2 !py-1 text-xs text-danger" onClick={() => removePayment(idx)}>

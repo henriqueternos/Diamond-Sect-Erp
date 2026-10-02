@@ -44,6 +44,7 @@ export default function OrdersList() {
   const [paymentAmount, setPaymentAmount] = useState(0);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("pix");
   const [paymentCardBrand, setPaymentCardBrand] = useState("");
+  const [paymentInstallments, setPaymentInstallments] = useState(1);
   const [paymentDate, setPaymentDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [paymentError, setPaymentError] = useState<string | null>(null);
   const [paymentSaving, setPaymentSaving] = useState(false);
@@ -272,6 +273,7 @@ export default function OrdersList() {
     setPaymentAmount(order.openValue || 0);
     setPaymentMethod("pix");
     setPaymentCardBrand("");
+    setPaymentInstallments(1);
     setPaymentDate(new Date().toISOString().slice(0, 10));
     setPaymentError(null);
     setMenuOrder(null);
@@ -312,7 +314,13 @@ export default function OrdersList() {
     try {
       await PaymentService.register(
         paymentOrder,
-        { amount: paymentAmount, method: paymentMethod, cardBrand: paymentCardBrand || undefined, date: paymentDate },
+        {
+          amount: paymentAmount,
+          method: paymentMethod,
+          cardBrand: paymentCardBrand || undefined,
+          installments: paymentMethod === "credito" ? paymentInstallments : undefined,
+          date: paymentDate,
+        },
         { id: user!.id, name: user!.name }
       );
       setPaymentOrder(null);
@@ -608,6 +616,7 @@ export default function OrdersList() {
                       <th>Data</th>
                       <th>Forma</th>
                       <th>Bandeira</th>
+                      <th>Parcelas</th>
                       <th>Valor</th>
                       <th>Lançado por</th>
                       <th></th>
@@ -619,6 +628,7 @@ export default function OrdersList() {
                         <td>{p.date?.split("-").reverse().join("/")}</td>
                         <td>{PAYMENT_METHOD_LABELS[p.method]}</td>
                         <td>{p.cardBrand || "—"}</td>
+                        <td>{p.installments ? `${p.installments}x` : "—"}</td>
                         <td className="text-success">{money(p.amount)}</td>
                         <td className="text-mist-500">{p.registeredByName}</td>
                         <td>
@@ -670,6 +680,18 @@ export default function OrdersList() {
                 <div>
                   <label>Bandeira do cartão</label>
                   <input value={paymentCardBrand} onChange={(e) => setPaymentCardBrand(e.target.value)} placeholder="Ex: Visa, Mastercard" />
+                </div>
+              )}
+              {paymentMethod === "credito" && (
+                <div>
+                  <label>Parcelas</label>
+                  <select value={paymentInstallments} onChange={(e) => setPaymentInstallments(Number(e.target.value))}>
+                    {Array.from({ length: 12 }, (_, i) => i + 1).map((n) => (
+                      <option key={n} value={n}>
+                        {n}x
+                      </option>
+                    ))}
+                  </select>
                 </div>
               )}
               {paymentError && <p className="text-sm text-danger">{paymentError}</p>}
