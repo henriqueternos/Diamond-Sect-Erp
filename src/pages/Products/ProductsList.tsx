@@ -252,7 +252,14 @@ export default function ProductsList() {
           : undefined;
 
         const toNumber = (v: any) => {
-          const n = Number(String(v).replace(",", "."));
+          // Number("") dá 0 em JavaScript (não "vazio"), o que fazia uma
+          // célula vazia virar 0 em vez de cair no valor padrão — por isso
+          // produtos novos ficavam com quantidade/disponível zerados
+          // mesmo quando a planilha tinha "1" na coluna certa, se o nome
+          // da coluna não batia exatamente com o esperado.
+          const str = String(v ?? "").trim();
+          if (str === "") return undefined;
+          const n = Number(str.replace(",", "."));
           return Number.isFinite(n) ? n : undefined;
         };
 
@@ -286,7 +293,7 @@ export default function ProductsList() {
           if (componentNames) data.componentNames = componentNames;
 
           let qtyNote: string | undefined;
-          const newTotal = toNumber(cell(row, "Quantidade total", "totalQuantity"));
+          const newTotal = toNumber(cell(row, "Quantidade total", "totalQuantity", "Quantidade", "Qtd", "Qtd.", "Estoque"));
           if (newTotal !== undefined && newTotal !== existing.totalQuantity) {
             const delta = newTotal - existing.totalQuantity;
             data.totalQuantity = newTotal;
@@ -296,7 +303,7 @@ export default function ProductsList() {
           return { code, name, data, action: "update", existingId: existing.id, qtyNote };
         }
 
-        const total = toNumber(cell(row, "Quantidade total", "totalQuantity")) ?? 1;
+        const total = toNumber(cell(row, "Quantidade total", "totalQuantity", "Quantidade", "Qtd", "Qtd.", "Estoque")) ?? 1;
         const data: Partial<Product> = {
           name,
           internalCode: code,
@@ -314,6 +321,7 @@ export default function ProductsList() {
           rentValue: toNumber(cell(row, "Valor de locação", "Valor de locacao", "rentValue")) || 0,
           saleValue: toNumber(cell(row, "Valor de venda", "saleValue")) || 0,
           totalQuantity: total,
+          availableQuantity: total,
           ...(componentNames ? { componentNames } : {}),
         };
         return { code, name, data, action: "create" };

@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { ExpenseService } from "../../services/ExpenseService";
 import { PaymentService } from "../../services/PaymentService";
 import { OrderService } from "../../services/OrderService";
@@ -26,7 +27,14 @@ export default function Expenses() {
   const [form, setForm] = useState(EMPTY);
   const [editing, setEditing] = useState<Expense | null>(null);
   const [toDelete, setToDelete] = useState<Expense | null>(null);
-  const [monthFilter, setMonthFilter] = useState(() => new Date().toISOString().slice(0, 7));
+  const [searchParams] = useSearchParams();
+  const [monthFilter, setMonthFilter] = useState(() => searchParams.get("mes") || new Date().toISOString().slice(0, 7));
+
+  useEffect(() => {
+    const fromUrl = searchParams.get("mes");
+    if (fromUrl) setMonthFilter(fromUrl);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
 
   useEffect(() => ExpenseService.subscribeAll(setExpenses), []);
   useEffect(() => PaymentService.subscribeAll(setPayments), []);

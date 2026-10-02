@@ -177,21 +177,25 @@ export default function OrdersList() {
     }
   }
 
-  async function loadDocData() {
+  async function loadDocData(contractType: Order["type"]) {
     const [company, contract, withdrawal] = await Promise.all([
       SettingsService.getCompany(),
-      SettingsService.getContract(),
+      SettingsService.getContract(contractType),
       SettingsService.getWithdrawal(),
     ]);
     const missingCompany = !company.tradeName && !company.legalName;
     return { company, contract, withdrawal, missingCompany };
   }
 
-  async function withDoc(action: string, run: (data: Awaited<ReturnType<typeof loadDocData>>) => Promise<void> | void) {
+  async function withDoc(
+    action: string,
+    contractType: Order["type"],
+    run: (data: Awaited<ReturnType<typeof loadDocData>>) => Promise<void> | void
+  ) {
     setDocError(null);
     setDocBusy(action);
     try {
-      const data = await loadDocData();
+      const data = await loadDocData(contractType);
       if (data.missingCompany) {
         setDocError(
           'Os dados da empresa ainda não foram configurados. Vá em "Configurações" e preencha ao menos o nome da empresa antes de gerar documentos.'
@@ -206,20 +210,23 @@ export default function OrdersList() {
     }
   }
 
+  // O modelo de contrato é escolhido automaticamente pelo tipo do pedido —
+  // venda usa o "Contrato de compra e venda", locação usa o "Contrato de
+  // locação", cada um configurado separadamente em Configurações.
   function handleViewContract(order: Order) {
-    withDoc("view-contract", ({ company, contract }) => {
+    withDoc("view-contract", order.type, ({ company, contract }) => {
       setViewDoc({ title: `Contrato — ${order.orderNumber}`, html: buildContractHtml(order, company, contract) });
       setMenuOrder(null);
     });
   }
   function handlePrintContract(order: Order) {
-    withDoc("print-contract", ({ company, contract }) => {
+    withDoc("print-contract", order.type, ({ company, contract }) => {
       openPrintWindow(buildContractHtml(order, company, contract), `Contrato ${order.orderNumber}`);
       setMenuOrder(null);
     });
   }
   function handleDownloadContract(order: Order) {
-    withDoc("download-contract", ({ company, contract }) => {
+    withDoc("download-contract", order.type, ({ company, contract }) => {
       downloadContractPdf(order, company, contract);
       setMenuOrder(null);
     });
@@ -241,19 +248,19 @@ export default function OrdersList() {
   }
 
   function handleViewWithdrawal(order: Order) {
-    withDoc("view-withdrawal", ({ company, withdrawal }) => {
+    withDoc("view-withdrawal", order.type, ({ company, withdrawal }) => {
       setViewDoc({ title: `Retirada — ${order.orderNumber}`, html: buildWithdrawalHtml(order, company, withdrawal) });
       setMenuOrder(null);
     });
   }
   function handlePrintWithdrawal(order: Order) {
-    withDoc("print-withdrawal", ({ company, withdrawal }) => {
+    withDoc("print-withdrawal", order.type, ({ company, withdrawal }) => {
       openPrintWindow(buildWithdrawalHtml(order, company, withdrawal), `Retirada ${order.orderNumber}`);
       setMenuOrder(null);
     });
   }
   function handleDownloadWithdrawal(order: Order) {
-    withDoc("download-withdrawal", ({ company, withdrawal }) => {
+    withDoc("download-withdrawal", order.type, ({ company, withdrawal }) => {
       downloadWithdrawalPdf(order, company, withdrawal);
       setMenuOrder(null);
     });

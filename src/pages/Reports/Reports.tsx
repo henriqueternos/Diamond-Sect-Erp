@@ -1,10 +1,13 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { OrderService } from "../../services/OrderService";
 import { ProductService } from "../../services/ProductService";
 import { ClientService } from "../../services/ClientService";
 import { CashFlowService } from "../../services/CashFlowService";
+import { ExpenseService } from "../../services/ExpenseService";
 import { exportTableExcel, exportTablePdf, ExportColumn } from "../../services/ExportService";
 import { openPrintWindow } from "../../services/DocumentService";
+import { Modal } from "../../components/Modal";
 import {
   Client,
   Order,
@@ -16,7 +19,23 @@ import {
   Product,
   PRODUCT_STATUS_LABELS,
   CashRegister,
+  Expense,
+  EXPENSE_CATEGORY_LABELS,
 } from "../../types";
+
+interface DrillRow {
+  label: string;
+  sub?: string;
+  value: string;
+  onOpen?: () => void;
+  openLabel?: string;
+  onOpenSecondary?: { label: string; onClick: () => void };
+}
+interface DrillDown {
+  title: string;
+  subtitle?: string;
+  rows: DrillRow[];
+}
 
 function money(v: number) {
   return (v || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -54,10 +73,13 @@ interface ReportRow {
 }
 
 export default function Reports() {
+  const navigate = useNavigate();
   const [orders, setOrders] = useState<Order[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
   const [cashRegs, setCashRegs] = useState<CashRegister[]>([]);
+  const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [drillDown, setDrillDown] = useState<DrillDown | null>(null);
 
   const [rangeStart, setRangeStart] = useState("");
   const [rangeEnd, setRangeEnd] = useState("");
@@ -77,6 +99,13 @@ export default function Reports() {
   useEffect(() => ProductService.subscribeAll(setProducts), []);
   useEffect(() => ClientService.subscribeAll(setClients), []);
   useEffect(() => CashFlowService.subscribeAll(setCashRegs), []);
+  useEffect(() => ExpenseService.subscribeAll(setExpenses), []);
+
+  const expenseRows = useMemo(
+    () => expenses.filter((e) => (!rangeStart || e.date >= rangeStart) && (!rangeEnd || e.date <= rangeEnd)),
+    [expenses, rangeStart, rangeEnd]
+  );
+  const expenseTotal = expenseRows.reduce((s, e) => s + e.amount, 0);
 
   // Resumo do Caixa, respeitando o mesmo período (Data inicial/final) do
   // restante do relatório — para dar uma visão financeira completa, não só
@@ -197,6 +226,84 @@ export default function Reports() {
     sellerAgg.set(o.sellerName || "—", (sellerAgg.get(o.sellerName || "—") || 0) + 1);
   });
   const topSeller = [...sellerAgg.entries()].sort((a, b) => b[1] - a[1])[0];
+
+  const distinctOrdersList = [...distinctOrderIds].map((id) => orders.find((o) => o.id === id)!);
+
+  function orderDrillRow(o: Order, valueLabel: string): DrillRow {
+    return {
+      label: `${o.orderNumber} — ${o.clientName}`,
+      sub: `${ORDER_STATUS_LABELS[o.status]} · ${dateBR(o.orderDate)}`,
+      value: valueLabel,
+      onOpen: () => navigate(`/pedidos?buscar=${encodeURIComponent(o.orderNumber)}`),
+      openLabel: "Abrir pedido",
+      onOpenSecondary: { label: "Abrir cliente", onClick: () => navigate(`/clientes?buscar=${encodeURIComponent(o.clientName)}`) },
+    };
+  }
+
+  function openOrdersDrill(title: string, list: Order[], valueFn: (o: Order) => number) {
+    setDrillDown({
+      title,
+      subtitle: `${list.length} pedido(s) no período e filtros atuais`,
+      rows: list.length
+        ? list.map((o) => orderDrillRow(o, money(valueFn(o))))
+        : [{ label: "Nenhum pedido contribui para este valor.", value: "" }],
+    });
+  }
+
+  function openProductsDrill() {
+    const sorted = [...rentalAgg.entries()].sort((a, b) => b[1] - a[1]);
+    setDrillDown({
+      title: "Produtos envolvidos",
+      subtitle: `${sorted.length} produto(s) distinto(s), ${totalProductsQty} peça(s) no total`,
+      rows: sorted.map(([name, qty]) => ({
+        label: name,
+        value: `${qty}x`,
+        onOpen: () => navigate(`/estoque?buscar=${encodeURIComponent(name)}`),
+        openLabel: "Abrir no estoque",
+      })),
+    });
+  }
+
+  function openSellerDrill(seller: string) {
+    const list = distinctOrdersList.filter((o) => (o.sellerName || "—") === seller);
+    setDrillDown({
+      title: `Pedidos de ${seller}`,
+      subtitle: `${list.length} pedido(s)`,
+      rows: list.map((o) => orderDrillRow(o, money(o.totalValue))),
+    });
+  }
+
+  function openCashDrill(title: string, valueFn: (r: CashRegister) => number) {
+    setDrillDown({
+      title,
+      subtitle: `${cashRows.length} caixa(s) no período`,
+      rows: cashRows.length
+        ? cashRows.map((r) => ({
+            label: `Caixa de ${dateBR(r.date)}`,
+            sub: `Status: ${r.status}${r.status === "fechado" ? ` · fechado por ${r.closedByName || "—"}` : ` · aberto por ${r.openedByName || "—"}`}`,
+            value: money(valueFn(r)),
+            onOpen: () => navigate(`/caixa?data=${r.date}`),
+            openLabel: "Abrir no Caixa",
+          }))
+        : [{ label: "Nenhum caixa no período selecionado.", value: "" }],
+    });
+  }
+
+  function openExpenseDrill() {
+    setDrillDown({
+      title: "Despesas no período",
+      subtitle: `${expenseRows.length} lançamento(s)`,
+      rows: expenseRows.length
+        ? expenseRows.map((e) => ({
+            label: e.description || EXPENSE_CATEGORY_LABELS[e.category],
+            sub: `${EXPENSE_CATEGORY_LABELS[e.category]} · ${dateBR(e.date)}`,
+            value: money(e.amount),
+            onOpen: () => navigate(`/despesas?mes=${e.date.slice(0, 7)}`),
+            openLabel: "Abrir em Despesas",
+          }))
+        : [{ label: "Nenhuma despesa no período selecionado.", value: "" }],
+    });
+  }
 
   const columns: ExportColumn[] = [
     { key: "orderNumber", label: "Pedido", width: 1.1 },
@@ -385,41 +492,73 @@ export default function Reports() {
         </div>
       </div>
 
+      <p className="text-[11px] text-mist-500">Clique em qualquer valor abaixo para ver de onde ele veio, com atalho direto para o registro.</p>
+
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="card p-3">
+        <div
+          className="card p-3 cursor-pointer hover:border-diamond/40"
+          onClick={() => openOrdersDrill("Pedidos encontrados", distinctOrdersList, (o) => o.totalValue)}
+        >
           <p className="text-xs text-mist-500">Pedidos encontrados</p>
           <p className="text-xl font-display">{distinctOrderIds.size}</p>
         </div>
-        <div className="card p-3">
+        <div
+          className="card p-3 cursor-pointer hover:border-diamond/40"
+          onClick={() => openOrdersDrill("Total vendido", distinctOrdersList.filter((o) => o.type === "venda"), (o) => o.totalValue)}
+        >
           <p className="text-xs text-mist-500">Total vendido</p>
           <p className="text-xl font-display text-champagne">{money(totalSold)}</p>
         </div>
-        <div className="card p-3">
+        <div
+          className="card p-3 cursor-pointer hover:border-diamond/40"
+          onClick={() => openOrdersDrill("Total locado", distinctOrdersList.filter((o) => o.type === "locacao"), (o) => o.totalValue)}
+        >
           <p className="text-xs text-mist-500">Total locado</p>
           <p className="text-xl font-display text-diamond">{money(totalRented)}</p>
         </div>
-        <div className="card p-3">
+        <div
+          className="card p-3 cursor-pointer hover:border-diamond/40"
+          onClick={() => openOrdersDrill("Valor total", distinctOrdersList, (o) => o.totalValue)}
+        >
           <p className="text-xs text-mist-500">Valor total</p>
           <p className="text-xl font-display">{money(totalValueSum)}</p>
         </div>
-        <div className="card p-3">
+        <div
+          className="card p-3 cursor-pointer hover:border-diamond/40"
+          onClick={() => openOrdersDrill("Valor recebido", distinctOrdersList.filter((o) => o.amountPaid > 0), (o) => o.amountPaid)}
+        >
           <p className="text-xs text-mist-500">Valor recebido</p>
           <p className="text-xl font-display text-success">{money(totalReceived)}</p>
         </div>
-        <div className="card p-3">
+        <div
+          className="card p-3 cursor-pointer hover:border-diamond/40"
+          onClick={() => openOrdersDrill("Valor em aberto", distinctOrdersList.filter((o) => o.openValue > 0), (o) => o.openValue)}
+        >
           <p className="text-xs text-mist-500">Valor em aberto</p>
           <p className="text-xl font-display text-warn">{money(totalOpen)}</p>
         </div>
-        <div className="card p-3">
+        <div className="card p-3 cursor-pointer hover:border-diamond/40" onClick={openProductsDrill}>
           <p className="text-xs text-mist-500">Produtos envolvidos</p>
           <p className="text-xl font-display">{totalProductsQty}</p>
         </div>
         <div className="card p-3">
           <p className="text-xs text-mist-500">Mais alugado / Top vendedor</p>
           <p className="text-sm font-display">
-            {topProduct ? `${topProduct[0]} (${topProduct[1]}x)` : "—"}
+            {topProduct ? (
+              <span className="cursor-pointer hover:text-diamond" onClick={openProductsDrill}>
+                {topProduct[0]} ({topProduct[1]}x)
+              </span>
+            ) : (
+              "—"
+            )}
             <br />
-            {topSeller ? `${topSeller[0]} (${topSeller[1]})` : "—"}
+            {topSeller ? (
+              <span className="cursor-pointer hover:text-diamond" onClick={() => openSellerDrill(topSeller[0])}>
+                {topSeller[0]} ({topSeller[1]})
+              </span>
+            ) : (
+              "—"
+            )}
           </p>
         </div>
       </div>
@@ -430,21 +569,54 @@ export default function Reports() {
           {cashSummary.openCount} ainda aberto(s)
         </p>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="card p-3">
+          <div
+            className="card p-3 cursor-pointer hover:border-diamond/40"
+            onClick={() => openCashDrill("Saldo inicial somado", (r) => r.openingBalance)}
+          >
             <p className="text-xs text-mist-500">Saldo inicial somado</p>
             <p className="text-xl font-display">{money(cashSummary.openingSum)}</p>
           </div>
-          <div className="card p-3">
+          <div
+            className="card p-3 cursor-pointer hover:border-diamond/40"
+            onClick={() =>
+              openCashDrill(
+                "Entradas (pedidos + manual)",
+                (r) => r.entries.filter((e) => e.type === "entrada").reduce((s, e) => s + e.amount, 0) + (r.closingSystemInflow || 0)
+              )
+            }
+          >
             <p className="text-xs text-mist-500">Entradas (pedidos + manual)</p>
             <p className="text-xl font-display text-success">{money(cashSummary.systemIn + cashSummary.manualIn)}</p>
           </div>
-          <div className="card p-3">
+          <div
+            className="card p-3 cursor-pointer hover:border-diamond/40"
+            onClick={() =>
+              openCashDrill("Saídas / sangrias", (r) => r.entries.filter((e) => e.type === "saida" || e.type === "sangria").reduce((s, e) => s + e.amount, 0))
+            }
+          >
             <p className="text-xs text-mist-500">Saídas / sangrias</p>
             <p className="text-xl font-display text-danger">{money(cashSummary.out)}</p>
           </div>
-          <div className="card p-3">
+          <div
+            className="card p-3 cursor-pointer hover:border-diamond/40"
+            onClick={() => openCashDrill("Saldo final (caixas já fechados)", (r) => r.closingBalance || 0)}
+          >
             <p className="text-xs text-mist-500">Saldo final (caixas já fechados)</p>
             <p className="text-xl font-display text-diamond">{money(cashSummary.closedFinal)}</p>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <p className="text-xs text-mist-500 mb-2">Despesas no período</p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="card p-3 cursor-pointer hover:border-diamond/40" onClick={openExpenseDrill}>
+            <p className="text-xs text-mist-500">Total de despesas</p>
+            <p className="text-xl font-display text-danger">{money(expenseTotal)}</p>
+          </div>
+          <div className="card p-3 cursor-pointer hover:border-diamond/40" onClick={openExpenseDrill}>
+            <p className="text-xs text-mist-500">Lançamentos</p>
+            <p className="text-xl font-display">{expenseRows.length}</p>
           </div>
         </div>
       </div>
@@ -504,6 +676,53 @@ export default function Reports() {
           </tbody>
         </table>
       </div>
+
+      {/* Detalhamento de um valor — mostra de onde ele veio, com atalho */}
+      <Modal open={Boolean(drillDown)} onClose={() => setDrillDown(null)} title={drillDown?.title ?? ""} wide>
+        {drillDown && (
+          <div className="space-y-3">
+            {drillDown.subtitle && <p className="text-xs text-mist-500">{drillDown.subtitle}</p>}
+            <div className="max-h-[60vh] overflow-y-auto space-y-2">
+              {drillDown.rows.map((row, idx) => (
+                <div
+                  key={idx}
+                  className="flex items-center justify-between gap-3 border border-ink-600 rounded-lg px-3 py-2 flex-wrap"
+                >
+                  <div className="min-w-0">
+                    <p className="text-sm text-mist-100 truncate">{row.label}</p>
+                    {row.sub && <p className="text-xs text-mist-500">{row.sub}</p>}
+                  </div>
+                  <div className="flex items-center gap-3 shrink-0">
+                    {row.value && <p className="font-display text-mist-100">{row.value}</p>}
+                    {row.onOpen && (
+                      <button
+                        className="btn-ghost !px-2 !py-1 text-xs text-diamond"
+                        onClick={() => {
+                          setDrillDown(null);
+                          row.onOpen!();
+                        }}
+                      >
+                        {row.openLabel || "Abrir"} →
+                      </button>
+                    )}
+                    {row.onOpenSecondary && (
+                      <button
+                        className="btn-ghost !px-2 !py-1 text-xs"
+                        onClick={() => {
+                          setDrillDown(null);
+                          row.onOpenSecondary!.onClick();
+                        }}
+                      >
+                        {row.onOpenSecondary.label} →
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }

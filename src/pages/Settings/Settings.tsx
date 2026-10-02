@@ -9,22 +9,30 @@ type Tab = "empresa" | "contrato" | "retirada" | "funcionarios";
 export default function Settings() {
   const { isAdmin } = useAuth();
   const [tab, setTab] = useState<Tab>("empresa");
+  // Dentro da aba "Contrato", qual dos dois modelos está sendo editado.
+  const [contractType, setContractType] = useState<"locacao" | "venda">("locacao");
 
   const [company, setCompany] = useState<CompanySettings | null>(null);
-  const [contract, setContract] = useState<DocumentSettings | null>(null);
+  const [contractLocacao, setContractLocacao] = useState<DocumentSettings | null>(null);
+  const [contractVenda, setContractVenda] = useState<DocumentSettings | null>(null);
   const [withdrawal, setWithdrawal] = useState<DocumentSettings | null>(null);
   const [savedMsg, setSavedMsg] = useState<string | null>(null);
 
   useEffect(() => {
     const u1 = SettingsService.subscribeCompany(setCompany);
-    const u2 = SettingsService.subscribeContract(setContract);
-    const u3 = SettingsService.subscribeWithdrawal(setWithdrawal);
+    const u2 = SettingsService.subscribeContract("locacao", setContractLocacao);
+    const u3 = SettingsService.subscribeContract("venda", setContractVenda);
+    const u4 = SettingsService.subscribeWithdrawal(setWithdrawal);
     return () => {
       u1();
       u2();
       u3();
+      u4();
     };
   }, []);
+
+  const contract = contractType === "venda" ? contractVenda : contractLocacao;
+  const setContract = contractType === "venda" ? setContractVenda : setContractLocacao;
 
   function flashSaved() {
     setSavedMsg("Salvo com sucesso.");
@@ -40,7 +48,7 @@ export default function Settings() {
   async function saveContract(e: React.FormEvent) {
     e.preventDefault();
     if (!contract) return;
-    await SettingsService.saveContract(contract);
+    await SettingsService.saveContract(contractType, contract);
     flashSaved();
   }
   async function saveWithdrawal(e: React.FormEvent) {
@@ -114,8 +122,31 @@ export default function Settings() {
         </form>
       )}
 
+      {tab === "contrato" && (
+        <div className="flex gap-2">
+          <button
+            type="button"
+            className={contractType === "locacao" ? "btn-primary !py-1.5 text-xs" : "btn-secondary !py-1.5 text-xs"}
+            onClick={() => setContractType("locacao")}
+          >
+            Contrato de Locação
+          </button>
+          <button
+            type="button"
+            className={contractType === "venda" ? "btn-primary !py-1.5 text-xs" : "btn-secondary !py-1.5 text-xs"}
+            onClick={() => setContractType("venda")}
+          >
+            Contrato de Venda
+          </button>
+        </div>
+      )}
+
       {tab === "contrato" && contract && (
         <form onSubmit={saveContract} className="card p-5 space-y-4">
+          <p className="text-xs text-mist-500">
+            Editando o modelo usado automaticamente sempre que o pedido for do tipo{" "}
+            <b>{contractType === "venda" ? "Venda" : "Locação"}</b>.
+          </p>
           <div>
             <label>Título</label>
             <input value={contract.title} onChange={(e) => setContract({ ...contract, title: e.target.value })} />
@@ -153,7 +184,7 @@ export default function Settings() {
             </div>
           </div>
           <div className="flex justify-end">
-            <button className="btn-primary">Salvar cláusulas do contrato</button>
+            <button className="btn-primary">Salvar contrato de {contractType === "venda" ? "venda" : "locação"}</button>
           </div>
         </form>
       )}

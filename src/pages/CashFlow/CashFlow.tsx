@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { CashFlowService } from "../../services/CashFlowService";
 import { PaymentService } from "../../services/PaymentService";
 import { OrderService } from "../../services/OrderService";
@@ -12,7 +13,16 @@ function money(v: number) {
 
 export default function CashFlow() {
   const { user, can, isAdmin } = useAuth();
-  const [dateId, setDateId] = useState(CashFlowService.todayId());
+  const [searchParams] = useSearchParams();
+  const [dateId, setDateId] = useState(searchParams.get("data") || CashFlowService.todayId());
+
+  // Se chegar aqui vindo de um atalho (ex.: Relatórios) com ?data=..., pula
+  // direto para aquele dia.
+  useEffect(() => {
+    const fromUrl = searchParams.get("data");
+    if (fromUrl) setDateId(fromUrl);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
   const [regs, setRegs] = useState<CashRegister[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);

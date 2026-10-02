@@ -1099,3 +1099,82 @@ Corrigido:
   "✓ Sem conflitos — todos os itens estão disponíveis para esse período."
 - Mudar as datas ou os produtos depois de verificar limpa esse resultado
   automaticamente, para nunca mostrar uma confirmação desatualizada.
+
+## Contrato separado: Locação x Venda
+
+Agora existem **dois modelos de contrato independentes**, cada um com seu
+próprio título, texto inicial, cláusulas e rodapé — configurados em
+**Configurações → Contrato**, que ganhou dois botões no topo: "Contrato de
+Locação" e "Contrato de Venda", para editar um ou outro.
+
+Na hora de gerar o documento (visualizar, imprimir ou baixar o contrato de
+um pedido), o sistema escolhe sozinho o modelo certo **automaticamente**,
+baseado no tipo do pedido — pedido de Venda sempre usa o contrato de
+venda, pedido de Locação sempre usa o de locação. Não precisa escolher
+nada na hora, só configurar os dois modelos uma vez em Configurações.
+
+Retirada e Pedido interno continuam como documentos únicos (não
+dependem do tipo venda/locação) — só o Contrato foi separado, conforme
+pedido.
+
+## Correção: quantidade importada não ficava disponível
+
+Bug real na importação do Estoque: `Number("")` em JavaScript dá **0**, não
+"vazio" — então, se a coluna de quantidade não batesse exatamente com o
+nome esperado (ou viesse em branco), o sistema calculava quantidade 0 em
+vez de cair no padrão (1), e o produto entrava com disponível zerado mesmo
+quando a planilha tinha o valor certo em outra variação de nome de coluna.
+
+Corrigido:
+- A leitura de número agora trata célula vazia como "sem valor" de
+  verdade, caindo certinho no padrão.
+- A coluna de quantidade agora é reconhecida em mais variações de nome:
+  "Quantidade total", "totalQuantity", "Quantidade", "Qtd", "Qtd.",
+  "Estoque" — não precisa mais ser exatamente igual ao nome exportado.
+- Produto novo sempre nasce com o disponível igual ao total informado na
+  planilha, de forma explícita.
+
+## Relatórios: clicar em qualquer valor mostra de onde ele veio
+
+Agora todo valor da tela de Relatórios é clicável — abre um resumo
+mostrando exatamente os registros que compõem aquele número, cada um com
+um atalho que leva direto pra tela principal correspondente:
+
+- **Pedidos encontrados, Total vendido, Total locado, Valor total, Valor
+  recebido, Valor em aberto** → lista os pedidos envolvidos, com "Abrir
+  pedido" (vai pra Pedidos) e "Abrir cliente" (vai pra Clientes) em cada
+  linha.
+- **Produtos envolvidos / Mais alugado** → lista cada produto com a
+  quantidade, atalho "Abrir no estoque".
+- **Top vendedor** → lista os pedidos daquele vendedor, cada um com atalho
+  pro pedido.
+- **Resumo do Caixa** (saldo inicial, entradas, saídas/sangrias, saldo
+  final) → lista os caixas (por dia) que compõem o valor, atalho "Abrir no
+  Caixa" que já leva direto pro dia certo.
+- **Despesas no período** (seção nova, não existia antes) → lista cada
+  lançamento de despesa, atalho que leva pra Despesas já no mês certo.
+
+Pra isso funcionar, as telas de Caixa e Despesas agora também entendem um
+atalho de link direto (ex.: `/caixa?data=2026-07-21`,
+`/despesas?mes=2026-07`), igual Pedidos, Clientes e Estoque já faziam.
+
+## Auditoria completa — 1 bug real encontrado e corrigido
+
+Revisão minuciosa de todo o sistema, com o compilador TypeScript rodando
+de verdade por cima do projeto inteiro (não só checagem manual), à procura
+especificamente de erros de sintaxe, duplicação e tipos incompatíveis —
+confirmado: **nenhum erro de sintaxe ou duplicação em nenhum arquivo**.
+
+Na revisão manual dos fluxos mais recentes, encontrei e corrigi um problema
+real de concorrência: **lançar uma entrada/saída/sangria no Caixa usava uma
+"fotografia" da lista de movimentações capturada no momento em que o modal
+foi aberto, não a mais atual.** Se duas pessoas lançassem algo quase ao
+mesmo tempo no mesmo caixa (ex.: duas abas, dois funcionários), o segundo
+lançamento poderia sobrescrever/perder o primeiro. Corrigido na raiz, no
+serviço: agora sempre lê o caixa de novo, dentro de uma transação segura,
+bem no instante de gravar — não existe mais essa janela de risco.
+
+Conferido também: todas as regras do Firestore continuam cobrindo
+corretamente as coleções novas/alteradas (contratos separados, caixa com
+múltiplos registros por dia) sem precisar de nenhuma mudança adicional nas
+regras — o arquivo `firestore.rules` já está com tudo coberto.

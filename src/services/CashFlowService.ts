@@ -6,6 +6,7 @@ import {
   getDocs,
   onSnapshot,
   query,
+  runTransaction,
   serverTimestamp,
   setDoc,
   where,
@@ -66,19 +67,28 @@ export const CashFlowService = {
 
   async addEntry(
     registerId: string,
-    current: CashRegister,
+    _current: CashRegister,
     entry: Omit<CashEntry, "id" | "createdAt">,
     user: { id: string; name: string }
   ) {
-    if (current.status !== "aberto") {
-      throw new Error("Este caixa não está aberto.");
-    }
     const newEntry: CashEntry = {
       ...entry,
       id: typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`,
       createdAt: new Date().toISOString(),
     };
-    await setDoc(registerRef(registerId), { entries: [...current.entries, newEntry], updatedAt: serverTimestamp() }, { merge: true });
+    // Lê o caixa de novo bem na hora de gravar (em vez de confiar no que a
+    // tela tinha em mãos quando o modal abriu) — evita que um lançamento
+    // feito por outra pessoa entre a abertura do modal e o salvamento seja
+    // perdido/sobrescrito.
+    await runTransaction(db, async (tx) => {
+      const snap = await tx.get(registerRef(registerId));
+      if (!snap.exists()) throw new Error("Caixa não encontrado — pode ter sido excluído.");
+      const fresh = snap.data() as CashRegister;
+      if (fresh.status !== "aberto") {
+        throw new Error("Este caixa não está mais aberto.");
+      }
+      tx.update(registerRef(registerId), { entries: [...fresh.entries, newEntry], updatedAt: serverTimestamp() });
+    });
     await LogService.record({
       userId: user.id,
       userName: user.name,
