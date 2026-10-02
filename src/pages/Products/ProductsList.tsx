@@ -38,6 +38,7 @@ interface ImportRow {
   action: "create" | "update";
   existingId?: string;
   error?: string;
+  qtyNote?: string;
 }
 
 const EMPTY_PRODUCT: Omit<Product, "id" | "status"> = {
@@ -256,9 +257,13 @@ export default function ProductsList() {
         };
 
         if (existing) {
-          // Atualização: só mexe nos dados descritivos e de preço — nunca na
-          // quantidade/estoque de um produto que já existe, para não
-          // bagunçar reservas e disponibilidade já em andamento.
+          // Atualização: dados descritivos e de preço sempre atualizam. A
+          // quantidade também, se vier na planilha — mas com cuidado: só
+          // ajusta o "disponível" pela diferença, sem tocar no que já está
+          // reservado/em prova/alugado, para não bagunçar pedidos em
+          // andamento (ex.: tinha 3, planilha diz 5 → ganha +2 disponíveis;
+          // tinha 5, planilha diz 3 → perde 2 disponíveis, nunca mexe no
+          // que já está comprometido).
           const data: Partial<Product> = {
             name,
             productType: cell(row, "Tipo", "productType") || existing.productType,
@@ -279,7 +284,16 @@ export default function ProductsList() {
           if (rent !== undefined) data.rentValue = rent;
           if (sale !== undefined) data.saleValue = sale;
           if (componentNames) data.componentNames = componentNames;
-          return { code, name, data, action: "update", existingId: existing.id };
+
+          let qtyNote: string | undefined;
+          const newTotal = toNumber(cell(row, "Quantidade total", "totalQuantity"));
+          if (newTotal !== undefined && newTotal !== existing.totalQuantity) {
+            const delta = newTotal - existing.totalQuantity;
+            data.totalQuantity = newTotal;
+            data.availableQuantity = Math.max((existing.availableQuantity || 0) + delta, 0);
+            qtyNote = `Quantidade: ${existing.totalQuantity} → ${newTotal} (${delta > 0 ? "+" : ""}${delta} no disponível)`;
+          }
+          return { code, name, data, action: "update", existingId: existing.id, qtyNote };
         }
 
         const total = toNumber(cell(row, "Quantidade total", "totalQuantity")) ?? 1;
@@ -847,6 +861,7 @@ export default function ProductsList() {
                     <th>Código</th>
                     <th>Nome</th>
                     <th>Ação</th>
+                    <th>Quantidade</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -863,15 +878,19 @@ export default function ProductsList() {
                           <span className="text-success">Criar produto novo</span>
                         )}
                       </td>
+                      <td className="text-mist-300">
+                        {r.action === "create" ? `${r.data.totalQuantity ?? 1} (novo)` : r.qtyNote || "sem mudança"}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
             <p className="text-[11px] text-mist-500">
-              Em produtos já existentes (código igual), só os dados descritivos e de preço são atualizados — a
-              quantidade em estoque não é alterada pela planilha, para não bagunçar reservas já em andamento. Use
-              "Mover estoque" para isso.
+              Em produtos já existentes (código igual), a quantidade da planilha também é aplicada — mas só ajusta
+              o <b>disponível</b> pela diferença, sem tocar no que já está reservado, em prova ou alugado (assim
+              nenhum pedido em andamento é afetado). Para mover estoque entre disponível/lavanderia/manutenção, use
+              "Mover estoque".
             </p>
             {importError && <p className="text-sm text-danger">{importError}</p>}
             <div className="flex justify-end gap-2">

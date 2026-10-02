@@ -1070,3 +1070,15 @@ Os cartões "Valor recebido" e "Valor em aberto" do Dashboard agora:
 "Valor recebido" soma os pagamentos lançados com data dentro do período;
 "Valor em aberto" soma o que falta receber dos pedidos criados dentro do
 período selecionado.
+
+## Importação do Estoque agora também atualiza a quantidade
+
+Ajustado a pedido: ao importar a planilha, a coluna "Quantidade total"
+agora também atualiza produtos que já existem (antes só valia pra produtos
+novos). Pra não bagunçar pedidos em andamento, o ajuste é sempre feito no
+**disponível**, pela diferença — por exemplo, se o produto tinha 3 e a
+planilha diz 5, o disponível ganha +2; se tinha 5 e a planilha diz 3,
+perde 2. O que já está reservado, em prova ou alugado nunca é mexido. A
+tela de conferência antes de importar mostra exatamente essa mudança
+("Quantidade: 3 → 5 (+2 no disponível)") linha por linha, antes de
+confirmar.
