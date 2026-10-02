@@ -30,6 +30,7 @@ export function OrderForm({
   const [items, setItems] = useState<OrderItem[]>(existingOrder?.items || []);
   const [pickProductId, setPickProductId] = useState("");
   const [productSearchTerm, setProductSearchTerm] = useState("");
+  const [clientSearchTerm, setClientSearchTerm] = useState("");
   const [pickQty, setPickQty] = useState(1);
   const [pickComponents, setPickComponents] = useState<string[]>([]);
 
@@ -79,6 +80,7 @@ export function OrderForm({
   const client = clients.find((c) => c.id === clientId);
   const pickProduct = products.find((p) => p.id === pickProductId);
   const filteredProducts = useMemo(() => ProductService.search(products, productSearchTerm), [products, productSearchTerm]);
+  const filteredClients = useMemo(() => ClientService.search(clients, clientSearchTerm), [clients, clientSearchTerm]);
   const totalPaidSoFar = isEdit ? existingOrder!.amountPaid : payments.reduce((s, p) => s + p.amount, 0);
   const totals = useMemo(() => calcTotals({ items, discount, surcharge, creditUsed, amountPaid: totalPaidSoFar }), [
     items,
@@ -344,14 +346,25 @@ export function OrderForm({
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="md:col-span-2">
           <label>Cliente *</label>
+          {!isEdit && (
+            <input
+              value={clientSearchTerm}
+              onChange={(e) => setClientSearchTerm(e.target.value)}
+              placeholder="Buscar por nome, CPF, telefone..."
+              className="mb-2"
+            />
+          )}
           <select value={clientId} onChange={(e) => setClientId(e.target.value)} required disabled={isEdit}>
-            <option value="">Selecione um cliente...</option>
-            {clients.map((c) => (
+            <option value="">{filteredClients.length === 0 ? "Nenhum cliente encontrado" : "Selecione um cliente..."}</option>
+            {(isEdit ? clients : filteredClients).map((c) => (
               <option key={c.id} value={c.id}>
                 {c.fullName} — {c.cpf}
               </option>
             ))}
           </select>
+          {!isEdit && clientSearchTerm && (
+            <p className="text-[11px] text-mist-500 mt-1">{filteredClients.length} encontrado(s)</p>
+          )}
           {isEdit && (
             <p className="text-[11px] text-mist-500 mt-1">
               O cliente não pode ser trocado num pedido já criado (isso protegeria o histórico e o crédito da pessoa

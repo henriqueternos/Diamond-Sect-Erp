@@ -1014,3 +1014,11 @@ sistema divide corretamente quanto de cada pagamento de pedido pertence a
 qual sessão (guardando, no fechamento, quanto daquele total já foi
 contado) — evita contar o mesmo pagamento duas vezes se houver duas
 sessões no mesmo dia.
+
+## Busca de cliente no Novo Pedido
+
+Adicionado um campo de busca acima da lista de clientes, na tela de Novo
+Pedido — filtra por nome, CPF, telefone, WhatsApp, e-mail ou cidade
+enquanto você digita, mostrando quantos resultados encontrou. (Na edição
+de um pedido já criado, o cliente continua travado — não editável — então
+a busca não aparece ali, só na criação de um pedido novo.)
