@@ -9,6 +9,36 @@ import { dateBR } from "../../utils/dates";
 import { Modal, ConfirmDialog } from "../../components/Modal";
 import { ProductStatusBadge } from "../../components/StatusBadge";
 import { useAuth } from "../../hooks/useAuth";
+import { exportTableExcel, importExcelFile, ExportColumn } from "../../services/ExportService";
+
+const EXCEL_COLUMNS: ExportColumn[] = [
+  { key: "name", label: "Nome" },
+  { key: "internalCode", label: "Código" },
+  { key: "productType", label: "Tipo" },
+  { key: "category", label: "Categoria" },
+  { key: "subcategory", label: "Subcategoria" },
+  { key: "brand", label: "Marca" },
+  { key: "color", label: "Cor" },
+  { key: "size", label: "Tamanho" },
+  { key: "gender", label: "Gênero" },
+  { key: "material", label: "Material" },
+  { key: "supplier", label: "Fornecedor" },
+  { key: "costValue", label: "Valor de custo" },
+  { key: "rentValue", label: "Valor de locação" },
+  { key: "saleValue", label: "Valor de venda" },
+  { key: "totalQuantity", label: "Quantidade total" },
+  { key: "componentNames", label: "Componentes (separados por vírgula)" },
+  { key: "notes", label: "Observações" },
+];
+
+interface ImportRow {
+  code: string;
+  name: string;
+  data: Partial<Product>;
+  action: "create" | "update";
+  existingId?: string;
+  error?: string;
+}
 
 const EMPTY_PRODUCT: Omit<Product, "id" | "status"> = {
   productType: "",
@@ -52,6 +82,10 @@ export default function ProductsList() {
   const [editing, setEditing] = useState<Product | null>(null);
   const [form, setForm] = useState<Omit<Product, "id" | "status">>(EMPTY_PRODUCT);
   const [newComponentName, setNewComponentName] = useState("");
+  const [importRows, setImportRows] = useState<ImportRow[] | null>(null);
+  const [importError, setImportError] = useState<string | null>(null);
+  const [importing, setImporting] = useState(false);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
   const [saving, setSaving] = useState(false);
   const [toDelete, setToDelete] = useState<Product | null>(null);
   const [availabilityProduct, setAvailabilityProduct] = useState<Product | null>(null);
@@ -161,6 +195,143 @@ export default function ProductsList() {
     setToDelete(null);
   }
 
+  function handleExportExcel() {
+    const rows = filtered.map((p) => ({
+      name: p.name,
+      internalCode: p.internalCode,
+      productType: p.productType,
+      category: p.category,
+      subcategory: p.subcategory || "",
+      brand: p.brand || "",
+      color: p.color || "",
+      size: p.size || "",
+      gender: p.gender || "",
+      material: p.material || "",
+      supplier: p.supplier || "",
+      costValue: p.costValue,
+      rentValue: p.rentValue,
+      saleValue: p.saleValue,
+      totalQuantity: p.totalQuantity,
+      componentNames: (p.componentNames || []).join(", "),
+      notes: p.notes || "",
+    }));
+    exportTableExcel(`estoque-diamond-sect-${new Date().toISOString().slice(0, 10)}.xlsx`, "Estoque", EXCEL_COLUMNS, rows);
+  }
+
+  function cell(row: Record<string, any>, ...keys: string[]) {
+    for (const k of keys) {
+      if (row[k] !== undefined && row[k] !== "") return String(row[k]).trim();
+    }
+    return "";
+  }
+
+  async function handleFileSelected(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // permite escolher o mesmo arquivo de novo depois
+    if (!file) return;
+    setImportError(null);
+    setImporting(true);
+    try {
+      const rawRows = await importExcelFile(file);
+      if (rawRows.length === 0) {
+        setImportError("A planilha está vazia ou não foi possível ler nenhuma linha.");
+        setImporting(false);
+        return;
+      }
+      const parsed: ImportRow[] = rawRows.map((row) => {
+        const code = cell(row, "Código", "Codigo", "internalCode");
+        const name = cell(row, "Nome", "name");
+        if (!code || !name) {
+          return { code: code || "—", name: name || "—", data: {}, action: "create", error: "Faltando Nome ou Código nesta linha — não será importada." };
+        }
+        const existing = products.find((p) => p.internalCode.toLowerCase() === code.toLowerCase());
+        const componentsRaw = cell(row, "Componentes (separados por vírgula)", "Componentes", "componentNames");
+        const componentNames = componentsRaw
+          ? componentsRaw.split(",").map((s) => s.trim()).filter(Boolean)
+          : undefined;
+
+        const toNumber = (v: any) => {
+          const n = Number(String(v).replace(",", "."));
+          return Number.isFinite(n) ? n : undefined;
+        };
+
+        if (existing) {
+          // Atualização: só mexe nos dados descritivos e de preço — nunca na
+          // quantidade/estoque de um produto que já existe, para não
+          // bagunçar reservas e disponibilidade já em andamento.
+          const data: Partial<Product> = {
+            name,
+            productType: cell(row, "Tipo", "productType") || existing.productType,
+            category: cell(row, "Categoria", "category") || existing.category,
+            subcategory: cell(row, "Subcategoria", "subcategory") || existing.subcategory,
+            brand: cell(row, "Marca", "brand") || existing.brand,
+            color: cell(row, "Cor", "color") || existing.color,
+            size: cell(row, "Tamanho", "size") || existing.size,
+            gender: cell(row, "Gênero", "Genero", "gender") || existing.gender,
+            material: cell(row, "Material", "material") || existing.material,
+            supplier: cell(row, "Fornecedor", "supplier") || existing.supplier,
+            notes: cell(row, "Observações", "Observacoes", "notes") || existing.notes,
+          };
+          const cost = toNumber(cell(row, "Valor de custo", "costValue"));
+          const rent = toNumber(cell(row, "Valor de locação", "Valor de locacao", "rentValue"));
+          const sale = toNumber(cell(row, "Valor de venda", "saleValue"));
+          if (cost !== undefined) data.costValue = cost;
+          if (rent !== undefined) data.rentValue = rent;
+          if (sale !== undefined) data.saleValue = sale;
+          if (componentNames) data.componentNames = componentNames;
+          return { code, name, data, action: "update", existingId: existing.id };
+        }
+
+        const total = toNumber(cell(row, "Quantidade total", "totalQuantity")) ?? 1;
+        const data: Partial<Product> = {
+          name,
+          internalCode: code,
+          productType: cell(row, "Tipo", "productType"),
+          category: cell(row, "Categoria", "category"),
+          subcategory: cell(row, "Subcategoria", "subcategory"),
+          brand: cell(row, "Marca", "brand"),
+          color: cell(row, "Cor", "color"),
+          size: cell(row, "Tamanho", "size"),
+          gender: cell(row, "Gênero", "Genero", "gender"),
+          material: cell(row, "Material", "material"),
+          supplier: cell(row, "Fornecedor", "supplier"),
+          notes: cell(row, "Observações", "Observacoes", "notes"),
+          costValue: toNumber(cell(row, "Valor de custo", "costValue")) || 0,
+          rentValue: toNumber(cell(row, "Valor de locação", "Valor de locacao", "rentValue")) || 0,
+          saleValue: toNumber(cell(row, "Valor de venda", "saleValue")) || 0,
+          totalQuantity: total,
+          ...(componentNames ? { componentNames } : {}),
+        };
+        return { code, name, data, action: "create" };
+      });
+      setImportRows(parsed);
+    } catch (err: any) {
+      setImportError(err.message || "Não foi possível ler esse arquivo. Confirme que é um .xlsx, .xls ou .csv válido.");
+    } finally {
+      setImporting(false);
+    }
+  }
+
+  async function handleConfirmImport() {
+    if (!importRows) return;
+    setImporting(true);
+    try {
+      for (const row of importRows) {
+        if (row.error) continue;
+        if (row.action === "update" && row.existingId) {
+          await ProductService.update(row.existingId, row.data);
+        } else if (row.action === "create") {
+          await ProductService.create(row.data as Omit<Product, "id" | "createdAt" | "updatedAt" | "status">);
+        }
+      }
+      setImportRows(null);
+    } catch (err: any) {
+      setImportError(err.message || "Erro ao importar. Nenhuma linha restante foi processada.");
+    } finally {
+      setImporting(false);
+    }
+  }
+
   function update<K extends keyof typeof form>(key: K, value: (typeof form)[K]) {
     setForm((f) => ({ ...f, [key]: value }));
   }
@@ -212,12 +383,29 @@ export default function ProductsList() {
           <h1 className="font-display text-2xl sm:text-3xl text-mist-100">Estoque</h1>
           <p className="text-sm text-mist-500">{products.length} produtos cadastrados</p>
         </div>
-        {can("products", "create") && (
-          <button className="btn-primary" onClick={openCreate}>
-            + Novo produto
+        <div className="flex flex-wrap gap-2">
+          <button className="btn-secondary" onClick={handleExportExcel}>
+            Exportar Excel
           </button>
-        )}
+          {can("products", "create") && (
+            <>
+              <input ref={fileInputRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleFileSelected} />
+              <button className="btn-secondary" onClick={() => fileInputRef.current?.click()} disabled={importing}>
+                {importing ? "Lendo..." : "Importar Excel"}
+              </button>
+              <button className="btn-primary" onClick={openCreate}>
+                + Novo produto
+              </button>
+            </>
+          )}
+        </div>
       </div>
+
+      {importError && (
+        <div className="card p-3 border-danger/50">
+          <p className="text-sm text-danger">{importError}</p>
+        </div>
+      )}
 
       <input
         className="max-w-lg"
@@ -639,6 +827,64 @@ export default function ProductsList() {
         onCancel={() => setToDelete(null)}
         danger
       />
+
+      {/* Prévia da importação — nada é salvo até confirmar aqui */}
+      <Modal open={Boolean(importRows)} onClose={() => setImportRows(null)} title="Conferir importação" wide>
+        {importRows && (
+          <div className="space-y-4">
+            <p className="text-sm text-mist-500">
+              {importRows.filter((r) => r.action === "create" && !r.error).length} produto(s) novo(s) serão criados ·{" "}
+              {importRows.filter((r) => r.action === "update" && !r.error).length} produto(s) existente(s) (mesmo código)
+              serão atualizados
+              {importRows.some((r) => r.error) && (
+                <> · <span className="text-danger">{importRows.filter((r) => r.error).length} linha(s) com problema, não serão importadas</span></>
+              )}
+            </p>
+            <div className="overflow-x-auto max-h-80">
+              <table className="table-shell">
+                <thead>
+                  <tr>
+                    <th>Código</th>
+                    <th>Nome</th>
+                    <th>Ação</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {importRows.map((r, idx) => (
+                    <tr key={idx}>
+                      <td>{r.code}</td>
+                      <td>{r.name}</td>
+                      <td>
+                        {r.error ? (
+                          <span className="text-danger">{r.error}</span>
+                        ) : r.action === "update" ? (
+                          <span className="text-warn">Atualizar produto existente</span>
+                        ) : (
+                          <span className="text-success">Criar produto novo</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <p className="text-[11px] text-mist-500">
+              Em produtos já existentes (código igual), só os dados descritivos e de preço são atualizados — a
+              quantidade em estoque não é alterada pela planilha, para não bagunçar reservas já em andamento. Use
+              "Mover estoque" para isso.
+            </p>
+            {importError && <p className="text-sm text-danger">{importError}</p>}
+            <div className="flex justify-end gap-2">
+              <button className="btn-secondary" onClick={() => setImportRows(null)}>
+                Cancelar
+              </button>
+              <button className="btn-primary" onClick={handleConfirmImport} disabled={importing}>
+                {importing ? "Importando..." : "Confirmar importação"}
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }

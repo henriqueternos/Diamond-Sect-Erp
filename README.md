@@ -1031,3 +1031,24 @@ aparece um campo **"Parcelas"** com opções de 1x até 12x. Fica salvo junto
 com o pagamento e aparece no histórico de pagamentos do pedido. Não
 aparece pra Pix, Dinheiro, Débito ou Crédito do cliente, só faz sentido
 pra cartão de crédito mesmo.
+
+## Importar e exportar o Estoque pelo Excel
+
+Na tela de Estoque, dois botões novos:
+
+- **Exportar Excel** — baixa um arquivo .xlsx com todos os produtos
+  filtrados na tela atual (nome, código, tipo, categoria, marca, valores,
+  quantidade, componentes, observações).
+- **Importar Excel** — escolhe um arquivo .xlsx/.xls/.csv e o sistema
+  reconhece automaticamente as colunas (usa os mesmos nomes do arquivo
+  exportado, então editar o arquivo baixado e reimportar funciona direto).
+  Antes de gravar qualquer coisa, mostra uma tela de conferência:
+  - Linha com um **Código** que ainda não existe → vira produto **novo**.
+  - Linha com um **Código** que já existe → **atualiza** esse produto (só
+    os dados descritivos e de preço — a quantidade em estoque não é mexida
+    pela planilha, para não bagunçar reservas já em andamento; pra isso
+    continua usando "Mover estoque").
+  - Linha sem Nome ou sem Código → marcada com erro, não é importada.
+
+Nada é salvo até você clicar em "Confirmar importação" na tela de
+conferência.
