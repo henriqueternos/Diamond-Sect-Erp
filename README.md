@@ -1197,3 +1197,33 @@ começam com "Componente — " (ex.: "Componente — Calça", usada para anotar
 qual calça combina com qual terno), agora são guardadas automaticamente
 nas Observações do produto, em vez de serem simplesmente ignoradas/
 perdidas na importação.
+
+## Nova funcionalidade: controle de Nota Fiscal (coleção separada)
+
+Adicionado conforme pedido — uma base própria no Firestore (coleção
+`invoices`), separada dos pedidos, só para controlar quais pedidos
+precisam de nota fiscal. **Não emite nota fiscal de verdade** (isso
+continua sendo feito no emissor fiscal de costume da loja) — é um
+checklist/acompanhamento.
+
+### No formulário de pedido (criar/editar)
+Novo quadro "Nota fiscal" com duas opções: **Emitir nota fiscal para este
+pedido** / **Não emitir**. Fica guardado na coleção separada, vinculado ao
+pedido pelo ID — nunca mexe nos dados do pedido em si.
+
+### Nova tela "Notas Fiscais" (menu lateral, ícone 🧾)
+Lista todos os pedidos marcados, com:
+- Cartões de resumo: Pendentes, Emitidas, Não vão emitir (clicáveis, filtram a lista).
+- Busca por pedido ou cliente.
+- Clicar no número do pedido abre ele direto em Pedidos.
+- **Marcar emitida** — abre uma caixinha pra preencher o número da nota e a
+  data de emissão (preenchido manualmente, depois de emitir no emissor
+  fiscal de verdade).
+- **Voltar p/ pendente** / **Não vai emitir** / **Marcar para emitir** —
+  troca o status direto na lista, sem precisar abrir o pedido.
+
+### Permissões
+Criado um módulo de permissão próprio ("Notas Fiscais") na matriz de
+Configurações → Funcionários — por padrão, vendedores já têm acesso de
+ver/editar (já que o campo de marcar fica no próprio formulário do
+pedido), mas um admin pode restringir isso por funcionário se quiser.

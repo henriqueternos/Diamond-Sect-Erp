@@ -17,6 +17,7 @@ const MODULE_LABELS: Record<ModuleKey, string> = {
   cashFlow: "Caixa",
   expenses: "Despesas",
   calendar: "Agenda",
+  invoices: "Notas Fiscais",
 };
 
 const ACTION_LABELS: Record<PermissionAction, string> = {

@@ -17,6 +17,7 @@ const NAV_ITEMS: { to: string; label: string; icon: string; moduleKey?: ModuleKe
   { to: "/caixa", label: "Caixa", icon: "▢", moduleKey: "cashFlow" },
   { to: "/despesas", label: "Despesas", icon: "▼", moduleKey: "expenses" },
   { to: "/relatorios", label: "Relatórios", icon: "▥", moduleKey: "reports" },
+  { to: "/notas-fiscais", label: "Notas Fiscais", icon: "🧾", moduleKey: "invoices" },
   { to: "/lista-separacao", label: "Lista de separação", icon: "☰" },
   { to: "/configuracoes", label: "Configurações", icon: "⚙", moduleKey: "settings" },
   { to: "/logs", label: "Logs", icon: "▧", adminOnly: true },

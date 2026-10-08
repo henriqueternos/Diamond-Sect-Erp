@@ -92,5 +92,8 @@ service cloud.firestore {
     match /productHistory/{id} { allow read, write: if isSignedIn(); }
     match /customerCredits/{id} { allow read, write: if isSignedIn(); }
     match /calendarEvents/{id} { allow read, write: if isSignedIn(); }
+
+    // Controle de nota fiscal — coleção própria, separada do pedido.
+    match /invoices/{id} { allow read, write: if isSignedIn(); }
   }
 }

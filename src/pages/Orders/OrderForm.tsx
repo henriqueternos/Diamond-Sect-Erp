@@ -5,6 +5,7 @@ import { ProductService } from "../../services/ProductService";
 import { OrderService, ConflictInfo, calcTotals } from "../../services/OrderService";
 import { PaymentService } from "../../services/PaymentService";
 import { CustomerCreditService } from "../../services/CustomerCreditService";
+import { InvoiceService } from "../../services/InvoiceService";
 import { dateBR } from "../../utils/dates";
 import { effectiveItemComponents } from "../../utils/components";
 import { useAuth } from "../../hooks/useAuth";
@@ -26,6 +27,9 @@ export function OrderForm({
   const [clientId, setClientId] = useState(existingOrder?.clientId || "");
   const [type, setType] = useState<OrderType>(existingOrder?.type || "locacao");
   const [clientCategory, setClientCategory] = useState<ClientCategory | "">(existingOrder?.clientCategory || "");
+  // Controle de nota fiscal fica numa coleção própria, separada do pedido —
+  // em modo de edição, precisa buscar o registro existente (se houver).
+  const [willIssueInvoice, setWillIssueInvoice] = useState(true);
   const [clientCategoryNotes, setClientCategoryNotes] = useState(existingOrder?.clientCategoryNotes || "");
   const [items, setItems] = useState<OrderItem[]>(existingOrder?.items || []);
   const [pickProductId, setPickProductId] = useState("");
@@ -62,6 +66,12 @@ export function OrderForm({
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   useEffect(() => ClientService.subscribeAll(setClients), []);
+  useEffect(() => {
+    if (!existingOrder) return;
+    InvoiceService.getForOrder(existingOrder.id).then((inv) => {
+      if (inv) setWillIssueInvoice(inv.willIssue);
+    });
+  }, [existingOrder]);
   useEffect(() => ProductService.subscribeAll(setProducts), []);
 
   // Se o Tipo (venda/locação) mudar depois que já tem produto no carrinho,
@@ -294,6 +304,12 @@ export function OrderForm({
           }
         }
 
+        await InvoiceService.setWillIssue(
+          { id: existingOrder!.id, orderNumber: existingOrder!.orderNumber, clientName: client.fullName, totalValue: totals.totalValue },
+          willIssueInvoice,
+          { id: user!.id, name: user!.name }
+        );
+
         onSaved();
         return;
       }
@@ -358,6 +374,12 @@ export function OrderForm({
           );
         }
       }
+
+      await InvoiceService.setWillIssue(
+        { id: created.id, orderNumber: created.orderNumber, clientName: client.fullName, totalValue: totals.totalValue },
+        willIssueInvoice,
+        { id: user!.id, name: user!.name }
+      );
 
       onSaved();
     } catch (err: any) {
@@ -441,6 +463,25 @@ export function OrderForm({
             placeholder="Digite informações adicionais (opcional)..."
           />
         </div>
+      </div>
+
+      {/* Nota fiscal — controle à parte, fica numa coleção própria */}
+      <div className="card p-4 space-y-2">
+        <p className="font-display text-lg">Nota fiscal</p>
+        <div className="flex gap-4">
+          <label className="flex items-center gap-2 text-sm text-mist-100 normal-case font-normal cursor-pointer">
+            <input type="radio" name="willIssueInvoice" className="!w-auto" checked={willIssueInvoice} onChange={() => setWillIssueInvoice(true)} />
+            Emitir nota fiscal para este pedido
+          </label>
+          <label className="flex items-center gap-2 text-sm text-mist-100 normal-case font-normal cursor-pointer">
+            <input type="radio" name="willIssueInvoice" className="!w-auto" checked={!willIssueInvoice} onChange={() => setWillIssueInvoice(false)} />
+            Não emitir
+          </label>
+        </div>
+        <p className="text-[11px] text-mist-500">
+          Isso só marca a intenção, para você acompanhar em "Notas Fiscais" no menu — a emissão em si continua
+          sendo feita no seu emissor fiscal de costume.
+        </p>
       </div>
 
       {/* Produtos */}

@@ -14,7 +14,8 @@ export type ModuleKey =
   | "settings"
   | "cashFlow"
   | "expenses"
-  | "calendar";
+  | "calendar"
+  | "invoices";
 
 export type PermissionAction =
   | "view"
@@ -332,6 +333,36 @@ export interface CashEntry {
   description: string;
   userName: string;
   createdAt: string; // ISO datetime, gerado no cliente
+}
+
+/** ---------- NOTA FISCAL (controle — não emite de verdade, só rastreia) ---------- */
+
+export type InvoiceStatus = "pendente" | "emitida" | "nao_aplicavel";
+
+export const INVOICE_STATUS_LABELS: Record<InvoiceStatus, string> = {
+  pendente: "Pendente",
+  emitida: "Emitida",
+  nao_aplicavel: "Não vai emitir",
+};
+
+/** Um documento por pedido (id = orderId) — guarda só o controle de "vai
+ * emitir nota fiscal?" e o acompanhamento, numa coleção própria separada
+ * do pedido, para nunca interferir nos dados/cálculos do pedido em si. */
+export interface Invoice {
+  id: string; // = orderId
+  orderId: string;
+  orderNumber: string;
+  clientName: string;
+  totalValue: number; // cópia do valor do pedido, só para referência rápida na lista
+  willIssue: boolean;
+  status: InvoiceStatus;
+  invoiceNumber?: string;
+  issueDate?: string; // YYYY-MM-DD
+  notes?: string;
+  updatedBy?: string;
+  updatedByName?: string;
+  createdAt?: Timestamp;
+  updatedAt?: Timestamp;
 }
 
 export interface CashRegister {

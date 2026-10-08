@@ -13,6 +13,7 @@ import Financial from "./pages/Financial/Financial";
 import Expenses from "./pages/Expenses/Expenses";
 import CashFlow from "./pages/CashFlow/CashFlow";
 import CalendarPage from "./pages/Calendar/CalendarPage";
+import InvoicesPage from "./pages/Invoices/InvoicesPage";
 import Reports from "./pages/Reports/Reports";
 import PickingList from "./pages/PickingList/PickingList";
 import LogsPage from "./pages/Logs/LogsPage";
@@ -109,6 +110,14 @@ export default function App() {
               element={
                 <ProtectedRoute requiredModule="calendar">
                   <CalendarPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="notas-fiscais"
+              element={
+                <ProtectedRoute requiredModule="invoices">
+                  <InvoicesPage />
                 </ProtectedRoute>
               }
             />

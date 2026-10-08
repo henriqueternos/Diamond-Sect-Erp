@@ -20,6 +20,7 @@ export const ALL_MODULES: ModuleKey[] = [
   "cashFlow",
   "expenses",
   "calendar",
+  "invoices",
 ];
 
 export const ALL_ACTIONS: PermissionAction[] = ["view", "create", "edit", "delete", "print", "downloadPdf", "sendEmail"];
@@ -41,6 +42,7 @@ export function defaultSellerPermissions(): Permissions {
   });
   perms.financial = { view: true };
   perms.reports = { view: true };
+  perms.invoices = { view: true, edit: true };
   return perms;
 }
 
