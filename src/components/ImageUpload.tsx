@@ -3,12 +3,12 @@ import { CloudinaryService } from "../services/CloudinaryService";
 import { isCloudinaryConfigured } from "../cloudinary/cloudinaryConfig";
 
 interface Props {
-  value: string;
+  value?: string;
   onChange: (url: string) => void;
   folder?: string;
 }
 
-export function ImageUpload({ value, onChange, folder }: Props) {
+export function ImageUpload({ value = "", onChange, folder }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState("");
