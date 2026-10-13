@@ -58,6 +58,14 @@ service cloud.firestore {
       allow read: if isSignedIn();
       allow write: if isAdmin();
     }
+    // Contador sequencial dos pedidos (DS-000001, DS-000002...). Toda vez que
+    // um pedido é criado, o sistema incrementa esse documento — então ele
+    // precisa ser gravável por QUALQUER usuário logado, não só pelo admin.
+    // Sem esta regra, vendedores e gerentes não conseguem criar pedidos.
+    // (Quando duas regras valem para o mesmo documento, basta uma permitir.)
+    match /companySettings/counters {
+      allow read, write: if isSignedIn();
+    }
     match /contractSettings/{id} {
       allow read: if isSignedIn();
       allow write: if isAdmin();

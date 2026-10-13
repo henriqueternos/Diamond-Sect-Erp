@@ -1,3 +1,4 @@
+import { CloudinaryService } from "../services/CloudinaryService";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ClientService } from "../services/ClientService";
@@ -82,7 +83,10 @@ export function GlobalSearch() {
                   className="w-full text-left px-2 py-1.5 rounded-lg hover:bg-ink-700 text-sm"
                   onClick={() => go(`/estoque?buscar=${encodeURIComponent(p.internalCode)}`)}
                 >
-                  {p.name} <span className="text-mist-500 text-xs">— {p.internalCode}</span>
+                  <span className="flex items-center gap-2">
+                    {p.photoUrl && <img src={CloudinaryService.thumb(p.photoUrl, 64)} alt="" className="w-7 h-7 rounded object-cover" />}
+                    <span>{p.name} <span className="text-mist-500 text-xs">— {p.internalCode}</span></span>
+                  </span>
                 </button>
               ))}
             </div>

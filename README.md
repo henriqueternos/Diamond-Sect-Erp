@@ -1227,3 +1227,20 @@ Criado um módulo de permissão próprio ("Notas Fiscais") na matriz de
 Configurações → Funcionários — por padrão, vendedores já têm acesso de
 ver/editar (já que o campo de marcar fica no próprio formulário do
 pedido), mas um admin pode restringir isso por funcionário se quiser.
+
+## Regras do Firestore: correção do contador de pedidos
+
+Ao preparar o guia de ativação do Firebase, achei um problema nas regras:
+o contador dos números de pedido (DS-000001…) fica em `companySettings/counters`,
+mas a regra de `companySettings` só permite escrita para **administrador**. Na
+prática, **vendedores e gerentes não conseguiam criar pedidos** (o administrador
+nunca percebeu porque ele passa pela regra). Foi adicionada uma regra específica
+para esse documento, liberando leitura/escrita para qualquer usuário logado.
+Nenhuma mudança no código do sistema — só nas regras publicadas no console do
+Firebase (ver `firestore.rules` e o guia de ativação em PDF).
+
+## Fotos com Cloudinary
+- Fotos de produtos e clientes são enviadas direto do navegador ao Cloudinary; no Firestore fica só o link (`photoUrl`).
+- Configure `src/cloudinary/cloudinaryConfig.ts` com o *Cloud name* e o nome do *Upload preset* (modo **Unsigned**).
+- Nunca coloque API Secret no projeto. Nenhuma mudança nas regras do Firestore é necessária.
+- Miniaturas (pequenas) aparecem ao lado do nome do produto no Estoque, na busca global, no seletor de produto do Novo Pedido e na janela de disponibilidade.

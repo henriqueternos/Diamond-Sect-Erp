@@ -4,6 +4,7 @@ import { ClientService } from "../../services/ClientService";
 import { CustomerCreditService, CustomerCreditEntry } from "../../services/CustomerCreditService";
 import { Client } from "../../types";
 import { Modal, ConfirmDialog } from "../../components/Modal";
+import { ImageUpload } from "../../components/ImageUpload";
 import { useAuth } from "../../hooks/useAuth";
 
 const EMPTY_CLIENT: Omit<Client, "id"> = {
@@ -375,12 +376,8 @@ export default function ClientsList() {
             )}
           </div>
           <div className="md:col-span-2">
-            <label>URL da foto (opcional)</label>
-            <input
-              value={form.photoUrl}
-              onChange={(e) => update("photoUrl", e.target.value)}
-              placeholder="https://..."
-            />
+            <label>Foto (opcional)</label>
+            <ImageUpload value={form.photoUrl} onChange={(u) => update("photoUrl", u)} folder="diamond-sect/clientes" />
           </div>
           <div className="md:col-span-2">
             <label>Observações</label>

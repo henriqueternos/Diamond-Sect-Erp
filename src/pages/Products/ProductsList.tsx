@@ -7,6 +7,8 @@ import { Product, Order, CLIENT_CATEGORY_LABELS } from "../../types";
 import { effectiveItemComponents } from "../../utils/components";
 import { dateBR } from "../../utils/dates";
 import { Modal, ConfirmDialog } from "../../components/Modal";
+import { ImageUpload } from "../../components/ImageUpload";
+import { CloudinaryService } from "../../services/CloudinaryService";
 import { ProductStatusBadge } from "../../components/StatusBadge";
 import { useAuth } from "../../hooks/useAuth";
 import { exportTableExcel, importExcelFile, ExportColumn } from "../../services/ExportService";
@@ -471,8 +473,17 @@ export default function ProductsList() {
                   </button>
                 </td>
                 <td className="text-mist-100 font-medium">
-                  {p.name}
-                  <div className="text-xs text-mist-500">{p.brand}</div>
+                  <div className="flex items-center gap-2">
+                    {p.photoUrl ? (
+                      <img src={CloudinaryService.thumb(p.photoUrl, 80)} alt="" loading="lazy" className="w-10 h-10 rounded object-cover border border-white/10 shrink-0" />
+                    ) : (
+                      <div className="w-10 h-10 rounded bg-white/5 shrink-0" />
+                    )}
+                    <div>
+                      {p.name}
+                      <div className="text-xs text-mist-500">{p.brand}</div>
+                    </div>
+                  </div>
                   {p.componentNames && p.componentNames.length > 0 && (
                     <div className="text-[10px] text-diamond mt-0.5">Por peça: {p.componentNames.join(", ")}</div>
                   )}
@@ -668,8 +679,8 @@ export default function ProductsList() {
             </p>
           </div>
           <div>
-            <label>URL da foto (opcional)</label>
-            <input value={form.photoUrl} onChange={(e) => update("photoUrl", e.target.value)} placeholder="https://..." />
+            <label>Foto (opcional)</label>
+            <ImageUpload value={form.photoUrl} onChange={(u) => update("photoUrl", u)} folder="diamond-sect/produtos" />
           </div>
 
           <div className="md:col-span-3">
@@ -696,6 +707,9 @@ export default function ProductsList() {
         wide
       >
         <div className="space-y-3">
+          {liveAvailabilityProduct?.photoUrl && (
+            <img src={CloudinaryService.thumb(liveAvailabilityProduct.photoUrl, 240)} alt="" className="w-24 h-24 rounded-lg object-cover border border-white/10" />
+          )}
           <div className="grid grid-cols-3 gap-3 text-sm">
             <div className="card p-3">
               <p className="text-mist-500 text-xs">Total</p>

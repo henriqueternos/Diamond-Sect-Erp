@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Client, Order, OrderItem, OrderType, PaymentMethod, PAYMENT_METHOD_LABELS, Product, ClientCategory, CLIENT_CATEGORY_LABELS } from "../../types";
 import { ClientService } from "../../services/ClientService";
+import { CloudinaryService } from "../../services/CloudinaryService";
 import { ProductService } from "../../services/ProductService";
 import { OrderService, ConflictInfo, calcTotals } from "../../services/OrderService";
 import { PaymentService } from "../../services/PaymentService";
@@ -515,6 +516,9 @@ export function OrderForm({
                 </option>
               ))}
             </select>
+            {pickProduct?.photoUrl && (
+              <img src={CloudinaryService.thumb(pickProduct.photoUrl, 120)} alt="" className="mt-2 w-14 h-14 rounded object-cover border border-white/10" />
+            )}
           </div>
           {!(pickProduct?.componentNames && pickProduct.componentNames.length > 0) && (
             <div className="w-24">
