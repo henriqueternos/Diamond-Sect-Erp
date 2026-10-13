@@ -144,7 +144,7 @@ apelido interno vinculado a um e-mail técnico. Passo a passo:
 
 1. **Authentication → Users → Add user**
    - E-mail: `henrique@diamondsect.local`
-   - Senha: `38371450`
+   - Senha: `SUA_SENHA_FORTE`
    - Copie o **UID** gerado.
 
 2. **Firestore Database → Iniciar coleção `users`**
@@ -167,7 +167,7 @@ apelido interno vinculado a um e-mail técnico. Passo a passo:
    campo para o administrador (isso será usado para os demais funcionários,
    na Fase 6).
 
-3. Pronto — na tela de login, use usuário `Henrique` e senha `38371450`.
+3. Pronto — na tela de login, use usuário `Henrique` e senha `SUA_SENHA_FORTE`.
 
 > Esse passo manual é necessário apenas para o **primeiro** administrador
 > (Henrique), já que é o único usuário que existe antes de o sistema ter
