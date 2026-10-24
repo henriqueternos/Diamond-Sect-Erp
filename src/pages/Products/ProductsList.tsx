@@ -5,7 +5,7 @@ import { OrderService } from "../../services/OrderService";
 import { StockSyncService } from "../../services/StockSyncService";
 import { Product, Order, CLIENT_CATEGORY_LABELS } from "../../types";
 import { effectiveItemComponents } from "../../utils/components";
-import { dateBR } from "../../utils/dates";
+import { dateBR, todayYMD } from "../../utils/dates";
 import { Modal, ConfirmDialog } from "../../components/Modal";
 import { ImageUpload } from "../../components/ImageUpload";
 import { CloudinaryService } from "../../services/CloudinaryService";
@@ -90,6 +90,7 @@ export default function ProductsList() {
   const [importing, setImporting] = useState(false);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
   const [toDelete, setToDelete] = useState<Product | null>(null);
   const [availabilityProduct, setAvailabilityProduct] = useState<Product | null>(null);
   const [moveProduct, setMoveProduct] = useState<Product | null>(null);
@@ -124,12 +125,14 @@ export default function ProductsList() {
   );
 
   function openCreate() {
+    setFormError(null);
     setEditing(null);
     setForm(EMPTY_PRODUCT);
     setNewComponentName("");
     setModalOpen(true);
   }
   function openEdit(p: Product) {
+    setFormError(null);
     setEditing(p);
     const { id, status, ...rest } = p;
     setForm(rest);
@@ -139,6 +142,16 @@ export default function ProductsList() {
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
+    setFormError(null);
+    const code = form.internalCode.trim();
+    if (!code || !form.name.trim()) {
+      setFormError("Informe o nome e o código do produto.");
+      return;
+    }
+    if (products.some((p) => p.internalCode.trim().toLowerCase() === code.toLowerCase() && p.id !== editing?.id)) {
+      setFormError(`Já existe um produto com o código ${code}. Use um código diferente.`);
+      return;
+    }
     setSaving(true);
     try {
       let productId: string;
@@ -155,6 +168,8 @@ export default function ProductsList() {
       // tenham sido alterados agora.
       await StockSyncService.recomputeForProduct(productId);
       setModalOpen(false);
+    } catch (err: any) {
+      setFormError(err?.message || "Não foi possível salvar o produto. Tente novamente.");
     } finally {
       setSaving(false);
     }
@@ -194,8 +209,12 @@ export default function ProductsList() {
 
   async function handleDelete() {
     if (!toDelete) return;
-    await ProductService.remove(toDelete.id);
-    setToDelete(null);
+    try {
+      await ProductService.remove(toDelete.id);
+      setToDelete(null);
+    } catch (err: any) {
+      alert(err?.message || "Não foi possível excluir o produto.");
+    }
   }
 
   function handleExportExcel() {
@@ -218,12 +237,42 @@ export default function ProductsList() {
       componentNames: (p.componentNames || []).join(", "),
       notes: p.notes || "",
     }));
-    exportTableExcel(`estoque-diamond-sect-${new Date().toISOString().slice(0, 10)}.xlsx`, "Estoque", EXCEL_COLUMNS, rows);
+    exportTableExcel(`estoque-diamond-sect-${todayYMD()}.xlsx`, "Estoque", EXCEL_COLUMNS, rows);
   }
 
+  // Compara cabeçalhos ignorando maiúsculas, acentos, espaços extras e
+  // pontuação — "Valor do aluguel", "valor de aluguel (R$)" etc. funcionam.
+  function normKey(k: string) {
+    return String(k)
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, " ")
+      .trim();
+  }
+  const HEADER_ALIASES: Record<string, string[]> = {
+    "valor de locacao": ["valor do aluguel", "valor de aluguel", "valor aluguel", "aluguel", "valor locacao", "valor da locacao", "preco do aluguel", "preco aluguel"],
+    "valor de custo": ["custo", "valor custo", "preco de custo"],
+    "valor de venda": ["venda", "valor venda", "preco de venda"],
+    "quantidade total": ["quantidade", "qtd", "qtde", "estoque", "quant"],
+    "nome": ["nome do produto", "nome produto", "produto", "descricao"],
+    "codigo": ["cod", "codigo do produto", "internalcode", "etiqueta"],
+  };
   function cell(row: Record<string, any>, ...keys: string[]) {
     for (const k of keys) {
       if (row[k] !== undefined && row[k] !== "") return String(row[k]).trim();
+    }
+    // Segunda tentativa: cabeçalhos "parecidos" (sem acento/maiúscula) e apelidos.
+    const wanted = new Set<string>();
+    for (const k of keys) {
+      const n = normKey(k);
+      wanted.add(n);
+      (HEADER_ALIASES[n] || []).forEach((a) => wanted.add(a));
+    }
+    for (const [rk, rv] of Object.entries(row)) {
+      if (rv === undefined || rv === "") continue;
+      const n = normKey(rk);
+      if (wanted.has(n) || wanted.has(n.replace(/ r$/, ""))) return String(rv).trim();
     }
     return "";
   }
@@ -466,7 +515,7 @@ export default function ProductsList() {
                 <td>
                   <button
                     title="Ver disponibilidade"
-                    className="w-6 h-6 rounded-full bg-diamond/10 text-diamond text-xs"
+                    className="w-6 h-6 rounded-full bg-diamond/10 text-diamond text-xs border border-champagne-soft/80"
                     onClick={() => setAvailabilityProduct(p)}
                   >
                     ●
@@ -566,7 +615,7 @@ export default function ProductsList() {
                     addComponentName();
                   }
                 }}
-                placeholder="Ex: Paletó"
+                placeholder="Nome do componente"
               />
               <button type="button" className="btn-secondary shrink-0" onClick={addComponentName}>
                 + Adicionar
@@ -689,6 +738,7 @@ export default function ProductsList() {
           </div>
 
           <div className="md:col-span-3 flex justify-end gap-2 pt-2">
+            {formError && <p className="text-sm text-danger mr-auto self-center">{formError}</p>}
             <button type="button" className="btn-secondary" onClick={() => setModalOpen(false)}>
               Cancelar
             </button>

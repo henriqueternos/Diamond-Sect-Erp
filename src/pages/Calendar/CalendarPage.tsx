@@ -6,6 +6,7 @@ import { ClientService } from "../../services/ClientService";
 import { AgendaItem, CalendarEvent, Client, Order } from "../../types";
 import { Modal, ConfirmDialog } from "../../components/Modal";
 import { useAuth } from "../../hooks/useAuth";
+import { toYMD } from "../../utils/dates";
 
 const WEEKDAYS = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
 
@@ -17,7 +18,7 @@ const TYPE_STYLE: Record<AgendaItem["type"], { label: string; dot: string; text:
 };
 
 function ymd(d: Date) {
-  return d.toISOString().slice(0, 10);
+  return toYMD(d);
 }
 
 export default function CalendarPage() {

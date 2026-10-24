@@ -9,7 +9,7 @@ import { Client, Order, OrderStatus, Product, CashRegister, Payment } from "../.
 import { OrderStatusBadge } from "../../components/StatusBadge";
 import { DashboardStagePanel } from "../../components/DashboardStagePanel";
 import { useAuth } from "../../hooks/useAuth";
-import { isToday } from "../../utils/dates";
+import { isToday, todayYMD, toYMD } from "../../utils/dates";
 
 export default function Dashboard() {
   const navigate = useNavigate();
@@ -20,8 +20,8 @@ export default function Dashboard() {
   const [cashRegs, setCashRegs] = useState<CashRegister[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
   const [period, setPeriod] = useState<"hoje" | "semana" | "mes" | "personalizado">("hoje");
-  const [customStart, setCustomStart] = useState(() => new Date().toISOString().slice(0, 10));
-  const [customEnd, setCustomEnd] = useState(() => new Date().toISOString().slice(0, 10));
+  const [customStart, setCustomStart] = useState(() => todayYMD());
+  const [customEnd, setCustomEnd] = useState(() => todayYMD());
 
   const isManagerOrAdmin = isAdmin || user?.role === "manager";
 
@@ -65,11 +65,11 @@ export default function Dashboard() {
       const diffToMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
       const monday = new Date(now);
       monday.setDate(now.getDate() - diffToMonday);
-      return { periodStart: monday.toISOString().slice(0, 10), periodEnd: todayStr };
+      return { periodStart: toYMD(monday), periodEnd: todayStr };
     }
     // mês
     const firstOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-    return { periodStart: firstOfMonth.toISOString().slice(0, 10), periodEnd: todayStr };
+    return { periodStart: toYMD(firstOfMonth), periodEnd: todayStr };
   })();
 
   // "Valor recebido" no período = pagamentos lançados com data dentro do
@@ -124,7 +124,7 @@ export default function Dashboard() {
     <div className="space-y-8">
       <div>
         <h1 className="font-display text-2xl sm:text-3xl text-mist-100">Painel geral</h1>
-        <p className="text-sm text-mist-500">Dados em tempo real do Firestore.</p>
+        <p className="text-sm text-mist-500">Visão geral da operação, atualizada em tempo real.</p>
       </div>
 
       {isManagerOrAdmin && (

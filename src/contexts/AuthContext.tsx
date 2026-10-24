@@ -37,12 +37,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const unsub = AuthService.onChange(async (user) => {
       setFirebaseUser(user);
-      if (user) {
-        await loadProfile(user.uid);
-      } else {
+      try {
+        if (user) {
+          await loadProfile(user.uid);
+        } else {
+          setProfile(null);
+        }
+      } catch (err) {
+        // Falha ao ler o perfil (rede, regras): não deixa a tela travada em
+        // "carregando" — cai para o estado sem perfil.
+        console.warn("Não foi possível carregar o perfil:", err);
         setProfile(null);
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     });
     return unsub;
   }, []);

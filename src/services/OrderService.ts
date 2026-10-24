@@ -127,6 +127,23 @@ export const OrderService = {
     for (const item of items) {
       const product = productById.get(item.productId);
       const requestedComponents = effectiveItemComponents(item, product);
+      // Produto SEM componentes e com várias unidades em estoque: só há
+      // conflito se, somando o que os outros pedidos do período já seguram
+      // com o que está sendo pedido agora, passar do total que existe.
+      // (Peça única — quantidade 1 — continua conflitando como sempre.)
+      let bookedByOthers = 0;
+      if (!requestedComponents) {
+        for (const o of orders) {
+          if (!rangesOverlap(dates.pickupDate, dates.returnDate, o.pickupDate, o.returnDate, marginDays)) continue;
+          for (const i of o.items || []) if (i.productId === item.productId) bookedByOthers += i.quantity || 0;
+        }
+        const usable =
+          (product?.totalQuantity ?? 0) -
+          (product?.maintenanceQuantity || 0) -
+          (product?.laundryQuantity || 0) -
+          (product?.unavailableQuantity || 0);
+        if (product && bookedByOthers + item.quantity <= usable) continue;
+      }
       for (const o of orders) {
         const overlap = rangesOverlap(
           dates.pickupDate,

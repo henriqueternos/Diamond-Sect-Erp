@@ -5,7 +5,7 @@ import { GlobalSearch } from "../components/GlobalSearch";
 import { NotificationsBell } from "../components/NotificationsBell";
 import { useAuth } from "../hooks/useAuth";
 import { AuthService } from "../services/AuthService";
-import { ModuleKey } from "../types";
+import { ModuleKey, ROLE_LABELS } from "../types";
 
 const NAV_ITEMS: { to: string; label: string; icon: string; moduleKey?: ModuleKey; adminOnly?: boolean }[] = [
   { to: "/", label: "Dashboard", icon: "◆", moduleKey: "dashboard" },
@@ -89,7 +89,7 @@ export function MainLayout() {
                 }`
               }
             >
-              <span className="text-base w-4 text-center shrink-0">{item.icon}</span>
+              <span className="icon-chip">{item.icon}</span>
               <span className={`truncate ${collapsed ? "lg:hidden" : ""}`}>{item.label}</span>
             </NavLink>
           ))}
@@ -104,7 +104,7 @@ export function MainLayout() {
           </button>
           <div className={`px-1 mb-2 min-w-0 ${collapsed ? "lg:hidden" : ""}`}>
             <p className="text-sm text-mist-100 truncate">{user?.name}</p>
-            <p className="text-xs text-mist-500 truncate">{user?.role === "admin" ? "Administrador" : user?.role}</p>
+            <p className="text-xs text-mist-500 truncate">{user?.role ? ROLE_LABELS[user.role] || user.role : ""}</p>
           </div>
           <button onClick={handleLogout} className="btn-secondary w-full text-xs">
             Sair

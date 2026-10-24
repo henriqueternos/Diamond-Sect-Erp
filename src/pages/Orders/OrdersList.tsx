@@ -18,7 +18,7 @@ import { Modal } from "../../components/Modal";
 import { OrderStatusBadge } from "../../components/StatusBadge";
 import { useAuth } from "../../hooks/useAuth";
 import { OrderForm } from "./OrderForm";
-import { dateBR, formatDateTimeBR } from "../../utils/dates";
+import { dateBR, formatDateTimeBR, todayYMD } from "../../utils/dates";
 import type { ConflictInfo } from "../../services/OrderService";
 
 function onlyDigits(v: string) {
@@ -45,7 +45,7 @@ export default function OrdersList() {
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("pix");
   const [paymentCardBrand, setPaymentCardBrand] = useState("");
   const [paymentInstallments, setPaymentInstallments] = useState(1);
-  const [paymentDate, setPaymentDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [paymentDate, setPaymentDate] = useState(() => todayYMD());
   const [paymentError, setPaymentError] = useState<string | null>(null);
   const [paymentSaving, setPaymentSaving] = useState(false);
   const [orderPayments, setOrderPayments] = useState<Payment[]>([]);
@@ -281,7 +281,7 @@ export default function OrdersList() {
     setPaymentMethod("pix");
     setPaymentCardBrand("");
     setPaymentInstallments(1);
-    setPaymentDate(new Date().toISOString().slice(0, 10));
+    setPaymentDate(todayYMD());
     setPaymentError(null);
     setMenuOrder(null);
   }
@@ -686,7 +686,7 @@ export default function OrdersList() {
               {(paymentMethod === "credito" || paymentMethod === "debito") && (
                 <div>
                   <label>Bandeira do cartão</label>
-                  <input value={paymentCardBrand} onChange={(e) => setPaymentCardBrand(e.target.value)} placeholder="Ex: Visa, Mastercard" />
+                  <input value={paymentCardBrand} onChange={(e) => setPaymentCardBrand(e.target.value)} placeholder="Bandeira do cartão" />
                 </div>
               )}
               {paymentMethod === "credito" && (
@@ -727,7 +727,7 @@ export default function OrdersList() {
             <p className="text-xs text-mist-500">Digite o usuário e a senha de um administrador ou gerente para autorizar:</p>
             <div>
               <label>Usuário (administrador ou gerente)</label>
-              <input required value={adminUsername} onChange={(e) => setAdminUsername(e.target.value)} placeholder="Ex: Henrique" />
+              <input required value={adminUsername} onChange={(e) => setAdminUsername(e.target.value)} placeholder="Usuário do administrador ou gerente" />
             </div>
             <div>
               <label>Senha</label>
@@ -817,7 +817,7 @@ export default function OrdersList() {
             <p className="text-xs text-mist-500">Digite o usuário e a senha de um administrador ou gerente para autorizar:</p>
             <div>
               <label>Usuário (administrador ou gerente)</label>
-              <input required value={cancelUsername} onChange={(e) => setCancelUsername(e.target.value)} placeholder="Ex: Henrique" />
+              <input required value={cancelUsername} onChange={(e) => setCancelUsername(e.target.value)} placeholder="Usuário do administrador ou gerente" />
             </div>
             <div>
               <label>Senha</label>

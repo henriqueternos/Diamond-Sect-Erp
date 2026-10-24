@@ -6,6 +6,7 @@ import { OrderService } from "../../services/OrderService";
 import { Expense, ExpenseCategory, EXPENSE_CATEGORY_LABELS, Order, Payment } from "../../types";
 import { Modal, ConfirmDialog } from "../../components/Modal";
 import { useAuth } from "../../hooks/useAuth";
+import { todayYMD } from "../../utils/dates";
 
 function money(v: number) {
   return (v || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -15,7 +16,7 @@ const EMPTY: Omit<Expense, "id" | "createdAt"> = {
   category: "outras",
   description: "",
   amount: 0,
-  date: new Date().toISOString().slice(0, 10),
+  date: todayYMD(),
 };
 
 export default function Expenses() {
@@ -28,7 +29,7 @@ export default function Expenses() {
   const [editing, setEditing] = useState<Expense | null>(null);
   const [toDelete, setToDelete] = useState<Expense | null>(null);
   const [searchParams] = useSearchParams();
-  const [monthFilter, setMonthFilter] = useState(() => searchParams.get("mes") || new Date().toISOString().slice(0, 7));
+  const [monthFilter, setMonthFilter] = useState(() => searchParams.get("mes") || todayYMD().slice(0, 7));
 
   useEffect(() => {
     const fromUrl = searchParams.get("mes");

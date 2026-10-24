@@ -47,7 +47,7 @@ function writeLockout(username: string, state: LockoutState) {
 }
 
 export const AuthService = {
-  /** Permite login digitando apenas o "usuário" (ex: Henrique). Internamente
+  /** Permite login digitando apenas o "usuário" (nome de usuário). Internamente
    *  buscamos no Firestore qual e-mail está vinculado a esse login. */
   async findEmailByUsername(username: string): Promise<string | null> {
     const q = query(
@@ -105,7 +105,7 @@ export const AuthService = {
     const email = await this.findEmailByUsername(username);
     if (!email) {
       await this.registerFailedAttempt(username);
-      throw new Error("Usuário não encontrado.");
+      throw new Error("Usuário ou senha inválidos.");
     }
 
     let credential;
@@ -117,7 +117,13 @@ export const AuthService = {
     }
 
     const profile = await this.getProfile(credential.user.uid);
-    if (profile && profile.active === false) {
+    if (!profile) {
+      await signOut(auth);
+      throw new Error(
+        "Seu acesso ainda não foi configurado no sistema (perfil não encontrado). Fale com o administrador."
+      );
+    }
+    if (profile.active === false) {
       await signOut(auth);
       await LogService.record({
         userId: credential.user.uid,

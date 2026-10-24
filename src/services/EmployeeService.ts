@@ -4,6 +4,7 @@ import { db } from "../firebase/firebaseConfig";
 import { getSecondaryAuth } from "../firebase/secondaryAuth";
 import { AppUser, ModuleKey, PermissionAction, Permissions, UserRole } from "../types";
 import { LogService } from "./LogService";
+import { AuthService } from "./AuthService";
 
 const usersCol = collection(db, "users");
 
@@ -59,13 +60,18 @@ export const EmployeeService = {
     data: { loginUsername: string; email: string; password: string; name: string; role: UserRole; permissions: Permissions },
     admin: { id: string; name: string }
   ) {
+    const login = data.loginUsername.trim();
+    if (!login) throw new Error("Informe o login do funcionário.");
+    if (await AuthService.findEmailByUsername(login)) {
+      throw new Error("Já existe um usuário com esse login. Escolha outro.");
+    }
     const secondaryAuth = getSecondaryAuth();
     const credential = await createUserWithEmailAndPassword(secondaryAuth, data.email, data.password);
     const uid = credential.user.uid;
     await signOut(secondaryAuth); // não deixa a sessão secundária pendurada
 
     await setDoc(doc(db, "users", uid), {
-      loginUsername: data.loginUsername,
+      loginUsername: login,
       email: data.email,
       name: data.name,
       role: data.role,

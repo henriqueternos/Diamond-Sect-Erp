@@ -30,10 +30,17 @@ export type Permissions = Record<ModuleKey, Partial<Record<PermissionAction, boo
 
 export type UserRole = "admin" | "manager" | "seller" | "assistant";
 
+export const ROLE_LABELS: Record<UserRole, string> = {
+  admin: "Administrador",
+  manager: "Gerente",
+  seller: "Vendedor(a)",
+  assistant: "Assistente",
+};
+
 export interface AppUser {
   id: string; // uid do Firebase Auth
-  loginUsername: string; // ex: "Henrique"
-  email: string; // e-mail interno vinculado (ex: henrique@diamondsect.local)
+  loginUsername: string; // nome usado no login
+  email: string; // e-mail interno vinculado (formato usuario@diamondsect.local)
   name: string;
   role: UserRole;
   active: boolean;
@@ -199,7 +206,16 @@ export interface OrderItem {
    * sem esse campo, num produto com componentes, são tratados como se
    * tivessem selecionado o conjunto completo (compatibilidade). */
   components?: string[];
+  /** Acréscimo aplicado direto no valor desta peça (não aparece no contrato).
+   * `unitValue` já inclui esse acréscimo; `baseUnitValue` é o preço original. */
+  baseUnitValue?: number;
+  surchargeIncluded?: number;
 }
+
+/** Como o acréscimo do pedido foi lançado:
+ * - "peca": somado ao valor de uma peça — o contrato NÃO mostra acréscimo;
+ * - "contrato": aparece no contrato, junto com o motivo. */
+export type SurchargeMode = "peca" | "contrato";
 
 export interface Order {
   id: string;
@@ -220,10 +236,14 @@ export interface Order {
   fittingTime?: string;
   fittingNotes?: string;
   pickupDate?: string;
+  pickupTime?: string;
   returnDate?: string;
+  returnTime?: string;
 
   discount: number;
-  surcharge: number;
+  surcharge: number; // só o acréscimo "visível" (modo contrato); o aplicado em peça fica embutido no item
+  surchargeMode?: SurchargeMode | null;
+  surchargeReason?: string; // motivo mostrado no contrato (modo contrato)
   creditUsed: number;
   amountPaid: number;
   paymentMethod: PaymentMethod;

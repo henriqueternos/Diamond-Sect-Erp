@@ -1,6 +1,6 @@
 import { initializeApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
-import { getFirestore } from "firebase/firestore";
+import { initializeFirestore } from "firebase/firestore";
 
 // Configuração do projeto Diamond Sect
 // IMPORTANTE: substitua "INSERIR_API_KEY_REAL_AQUI" pela apiKey real do seu
@@ -21,7 +21,9 @@ export const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 
 // Cloud Firestore — banco de dados principal do sistema
-export const db = getFirestore(app);
+// ignoreUndefinedProperties: campos opcionais "undefined" são simplesmente
+// omitidos na gravação, em vez de o Firestore recusar o documento inteiro.
+export const db = initializeFirestore(app, { ignoreUndefinedProperties: true });
 
 // OBS: Cloud Storage não é utilizado neste projeto (plano Spark / 100% gratuito).
 // Campos de imagem (produtos, clientes) devem ser tratados como URL de texto opcional.

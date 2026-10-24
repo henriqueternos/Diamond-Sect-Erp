@@ -4,11 +4,14 @@ import {
   deleteDoc,
   doc,
   getDoc,
+  getDocs,
+  limit,
   onSnapshot,
   orderBy,
   query,
   serverTimestamp,
   updateDoc,
+  where,
 } from "firebase/firestore";
 import { db } from "../firebase/firebaseConfig";
 import { Client } from "../types";
@@ -48,6 +51,10 @@ export const ClientService = {
   },
 
   async remove(id: string) {
+    const used = await getDocs(query(collection(db, "orders"), where("clientId", "==", id), limit(1)));
+    if (!used.empty) {
+      throw new Error("Este cliente possui pedidos e não pode ser excluído. (O histórico dele precisa ser mantido.)");
+    }
     await deleteDoc(doc(db, "clients", id));
   },
 

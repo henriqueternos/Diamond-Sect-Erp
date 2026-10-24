@@ -1,5 +1,26 @@
 import jsPDF from "jspdf";
-import { CompanySettings, DocumentSettings, Order, PAYMENT_METHOD_LABELS, CLIENT_CATEGORY_LABELS } from "../types";
+import { CompanySettings, DocumentSettings, Order, PAYMENT_METHOD_LABELS, CLIENT_CATEGORY_LABELS, ORDER_STATUS_LABELS } from "../types";
+
+/** Escapa texto digitado pelo usuário antes de colocar no HTML do documento
+ * (nome com "&" ou "<", observações etc. não podem quebrar nem injetar HTML). */
+function esc(v: unknown): string {
+  return String(v ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+/** O acréscimo só aparece no contrato se foi lançado em modo "contrato"
+ * (ou em pedidos antigos, sem modo, que sempre mostraram o acréscimo). */
+function showSurcharge(order: Pick<Order, "surcharge" | "surchargeMode">) {
+  return (order.surcharge || 0) > 0 && order.surchargeMode !== "peca";
+}
+
+/** Total líquido: produtos − desconto + acréscimo − crédito usado. */
+function netTotal(order: Pick<Order, "totalValue" | "discount" | "surcharge" | "creditUsed">) {
+  return Math.max((order.totalValue || 0) - (order.discount || 0) + (order.surcharge || 0) - (order.creditUsed || 0), 0);
+}
 
 function money(v: number) {
   return (v || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -38,8 +59,8 @@ function itemsTable(order: Order) {
         ${order.items
           .map(
             (i) =>
-              `<tr><td>${i.productName}</td><td>${i.internalCode}</td><td>${
-                i.components && i.components.length > 0 ? i.components.join(", ") : "—"
+              `<tr><td>${esc(i.productName)}</td><td>${esc(i.internalCode)}</td><td>${
+                i.components && i.components.length > 0 ? esc(i.components.join(", ")) : "—"
               }</td><td>${i.quantity}</td><td>${money(
                 i.unitValue
               )}</td><td>${money(i.unitValue * i.quantity)}</td></tr>`
@@ -51,24 +72,24 @@ function itemsTable(order: Order) {
 
 export function buildContractHtml(order: Order, company: CompanySettings, settings: DocumentSettings) {
   return `
-    <h1>${settings.title}</h1>
-    <p class="subtitle">Pedido nº ${order.orderNumber}</p>
+    <h1>${esc(settings.title)}</h1>
+    <p class="subtitle">Pedido nº ${esc(order.orderNumber)}</p>
 
     <h2>Empresa</h2>
     <div class="grid">
-      <div><b>Nome fantasia:</b> ${company.tradeName || "—"}</div>
-      <div><b>Razão social:</b> ${company.legalName || "—"}</div>
-      <div><b>CNPJ:</b> ${company.cnpj || "—"}</div>
-      <div><b>Telefone:</b> ${company.phone || "—"}</div>
-      <div><b>Endereço:</b> ${company.address || "—"}</div>
-      <div><b>E-mail:</b> ${company.email || "—"}</div>
+      <div><b>Nome fantasia:</b> ${esc(company.tradeName || "—")}</div>
+      <div><b>Razão social:</b> ${esc(company.legalName || "—")}</div>
+      <div><b>CNPJ:</b> ${esc(company.cnpj || "—")}</div>
+      <div><b>Telefone:</b> ${esc(company.phone || "—")}</div>
+      <div><b>Endereço:</b> ${esc(company.address || "—")}</div>
+      <div><b>E-mail:</b> ${esc(company.email || "—")}</div>
     </div>
 
     <h2>Cliente</h2>
     <div class="grid">
-      <div><b>Nome:</b> ${order.clientName}</div>
-      <div><b>CPF:</b> ${order.clientCpf}</div>
-      <div><b>Telefone:</b> ${order.clientPhone}</div>
+      <div><b>Nome:</b> ${esc(order.clientName)}</div>
+      <div><b>CPF:</b> ${esc(order.clientCpf)}</div>
+      <div><b>Telefone:</b> ${esc(order.clientPhone)}</div>
       <div><b>Tipo:</b> ${order.type === "venda" ? "Venda" : "Locação"}</div>
       <div><b>Categoria do cliente:</b> ${order.clientCategory ? CLIENT_CATEGORY_LABELS[order.clientCategory] : "—"}</div>
     </div>
@@ -80,56 +101,56 @@ export function buildContractHtml(order: Order, company: CompanySettings, settin
     <div class="grid">
       <div><b>Data do pedido:</b> ${dateBR(order.orderDate)}</div>
       <div><b>Data do evento:</b> ${dateBR(order.eventDate)}</div>
-      <div><b>Data da prova:</b> ${dateBR(order.fittingDate)} ${order.fittingTime || ""}</div>
-      <div><b>Data da retirada:</b> ${dateBR(order.pickupDate)}</div>
-      <div><b>Data da devolução:</b> ${dateBR(order.returnDate)}</div>
+      <div><b>Data da prova:</b> ${dateBR(order.fittingDate)} ${esc(order.fittingTime || "")}</div>
+      <div><b>Data da retirada:</b> ${dateBR(order.pickupDate)} ${esc(order.pickupTime || "")}</div>
+      <div><b>Data da devolução:</b> ${dateBR(order.returnDate)} ${esc(order.returnTime || "")}</div>
     </div>
 
     <h2>Valores</h2>
     <div class="totals">
-      <div>Forma de pagamento: ${PAYMENT_METHOD_LABELS[order.paymentMethod]}</div>
-      <div>Desconto: ${money(order.discount)} &nbsp; | &nbsp; Acréscimo: ${money(order.surcharge)} &nbsp; | &nbsp; Crédito usado: ${money(
-    order.creditUsed
-  )}</div>
+      <div>Forma de pagamento: ${PAYMENT_METHOD_LABELS[order.paymentMethod] || "—"}</div>
+      <div>Valor dos produtos: ${money(order.totalValue)}</div>
+      <div>Desconto: ${money(order.discount)} &nbsp; | &nbsp; Crédito usado: ${money(order.creditUsed)}</div>
+      ${showSurcharge(order) ? `<div>Acréscimo: ${money(order.surcharge)}${order.surchargeReason ? ` — ${esc(order.surchargeReason)}` : ""}</div>` : ""}
+      <div><b>Total do pedido: ${money(netTotal(order))}</b></div>
       <div>Valor pago: ${money(order.amountPaid)}</div>
-      <div><b>Valor total: ${money(order.totalValue)}</b></div>
       <div><b>Valor em aberto: ${money(order.openValue)}</b></div>
     </div>
 
-    ${order.orderDetails ? `<h2>Detalhes do pedido</h2><p class="clause">${order.orderDetails}</p>` : ""}
+    ${order.orderDetails ? `<h2>Detalhes do pedido</h2><p class="clause">${esc(order.orderDetails)}</p>` : ""}
 
     <h2>Cláusulas</h2>
-    <p class="clause">${settings.introText}</p>
-    ${settings.clauses.map((c, idx) => `<p class="clause">${idx + 1}. ${c}</p>`).join("")}
+    <p class="clause">${esc(settings.introText)}</p>
+    ${settings.clauses.map((c, idx) => `<p class="clause">${idx + 1}. ${esc(c)}</p>`).join("")}
 
     <div class="sign">
       <div>
-        <div class="line">${order.clientName}<br/>CPF ${order.clientCpf}</div>
+        <div class="line">${esc(order.clientName)}<br/>CPF ${esc(order.clientCpf)}</div>
       </div>
       <div>
-        <div class="line">${company.legalName || settings.companySignatureLabel}</div>
+        <div class="line">${esc(company.legalName || settings.companySignatureLabel)}</div>
       </div>
     </div>
 
-    <p class="footer">${settings.footer}</p>
+    <p class="footer">${esc(settings.footer)}</p>
   `;
 }
 
 export function buildWithdrawalHtml(order: Order, company: CompanySettings, settings: DocumentSettings) {
   return `
-    <h1>${settings.title}</h1>
-    <p class="subtitle">Pedido nº ${order.orderNumber}</p>
+    <h1>${esc(settings.title)}</h1>
+    <p class="subtitle">Pedido nº ${esc(order.orderNumber)}</p>
 
     <h2>Empresa</h2>
     <div class="grid">
-      <div><b>Nome fantasia:</b> ${company.tradeName || "—"}</div>
-      <div><b>Telefone:</b> ${company.phone || "—"}</div>
+      <div><b>Nome fantasia:</b> ${esc(company.tradeName || "—")}</div>
+      <div><b>Telefone:</b> ${esc(company.phone || "—")}</div>
     </div>
 
     <h2>Cliente</h2>
     <div class="grid">
-      <div><b>Nome:</b> ${order.clientName}</div>
-      <div><b>CPF:</b> ${order.clientCpf}</div>
+      <div><b>Nome:</b> ${esc(order.clientName)}</div>
+      <div><b>CPF:</b> ${esc(order.clientCpf)}</div>
     </div>
 
     <h2>Produtos retirados</h2>
@@ -137,34 +158,34 @@ export function buildWithdrawalHtml(order: Order, company: CompanySettings, sett
 
     <h2>Datas</h2>
     <div class="grid">
-      <div><b>Data da retirada:</b> ${dateBR(order.pickupDate)}</div>
-      <div><b>Data da devolução:</b> ${dateBR(order.returnDate)}</div>
+      <div><b>Data da retirada:</b> ${dateBR(order.pickupDate)} ${esc(order.pickupTime || "")}</div>
+      <div><b>Data da devolução:</b> ${dateBR(order.returnDate)} ${esc(order.returnTime || "")}</div>
     </div>
 
     <h2>Cláusulas</h2>
-    <p class="clause">${settings.introText}</p>
-    ${settings.clauses.map((c, idx) => `<p class="clause">${idx + 1}. ${c}</p>`).join("")}
+    <p class="clause">${esc(settings.introText)}</p>
+    ${settings.clauses.map((c, idx) => `<p class="clause">${idx + 1}. ${esc(c)}</p>`).join("")}
 
     <div class="sign">
-      <div><div class="line">${order.clientName}<br/>CPF ${order.clientCpf}</div></div>
-      <div><div class="line">${company.legalName || settings.companySignatureLabel}</div></div>
+      <div><div class="line">${esc(order.clientName)}<br/>CPF ${esc(order.clientCpf)}</div></div>
+      <div><div class="line">${esc(company.legalName || settings.companySignatureLabel)}</div></div>
     </div>
 
-    <p class="footer">${settings.footer}</p>
+    <p class="footer">${esc(settings.footer)}</p>
   `;
 }
 
 export function buildInternalOrderHtml(order: Order) {
   return `
     <h1>PEDIDO INTERNO — USO EXCLUSIVO DA LOJA</h1>
-    <p class="subtitle">Pedido nº ${order.orderNumber} · não enviar ao cliente</p>
+    <p class="subtitle">Pedido nº ${esc(order.orderNumber)} · não enviar ao cliente</p>
 
     <h2>Cliente</h2>
     <div class="grid">
-      <div><b>Nome:</b> ${order.clientName}</div>
-      <div><b>CPF:</b> ${order.clientCpf}</div>
-      <div><b>Telefone:</b> ${order.clientPhone}</div>
-      <div><b>Vendedor:</b> ${order.sellerName || "—"}</div>
+      <div><b>Nome:</b> ${esc(order.clientName)}</div>
+      <div><b>CPF:</b> ${esc(order.clientCpf)}</div>
+      <div><b>Telefone:</b> ${esc(order.clientPhone)}</div>
+      <div><b>Vendedor:</b> ${esc(order.sellerName || "—")}</div>
     </div>
 
     <h2>Produtos</h2>
@@ -172,22 +193,27 @@ export function buildInternalOrderHtml(order: Order) {
 
     <h2>Controle operacional</h2>
     <div class="grid">
-      <div><b>Status:</b> ${order.status}</div>
+      <div><b>Status:</b> ${ORDER_STATUS_LABELS[order.status] || esc(order.status)}</div>
       <div><b>Data do pedido:</b> ${dateBR(order.orderDate)}</div>
       <div><b>Data do evento:</b> ${dateBR(order.eventDate)}</div>
-      <div><b>Prova:</b> ${dateBR(order.fittingDate)} ${order.fittingTime || ""}</div>
+      <div><b>Prova:</b> ${dateBR(order.fittingDate)} ${esc(order.fittingTime || "")}</div>
       <div><b>Retirada:</b> ${dateBR(order.pickupDate)}</div>
       <div><b>Devolução:</b> ${dateBR(order.returnDate)}</div>
     </div>
 
-    ${order.fittingNotes ? `<h2>Observação da prova</h2><p class="clause">${order.fittingNotes}</p>` : ""}
+    ${order.fittingNotes ? `<h2>Observação da prova</h2><p class="clause">${esc(order.fittingNotes)}</p>` : ""}
 
     <h2>Valores</h2>
     <div class="totals">
-      <div>Valor total: ${money(order.totalValue)} · Pago: ${money(order.amountPaid)} · Em aberto: ${money(order.openValue)}</div>
+      ${order.items
+        .filter((i) => (i.surchargeIncluded || 0) > 0)
+        .map((i) => `<div>Acréscimo de ${money(i.surchargeIncluded || 0)} embutido na peça ${esc(i.productName)} (não aparece no contrato)</div>`)
+        .join("")}
+      ${(order.surcharge || 0) > 0 ? `<div>Acréscimo no contrato: ${money(order.surcharge)}${order.surchargeReason ? ` — ${esc(order.surchargeReason)}` : ""}</div>` : ""}
+      <div>Valor total: ${money(netTotal(order))} · Pago: ${money(order.amountPaid)} · Em aberto: ${money(order.openValue)}</div>
     </div>
 
-    ${order.internalNotes ? `<h2>Observações internas</h2><p class="clause">${order.internalNotes}</p>` : ""}
+    ${order.internalNotes ? `<h2>Observações internas</h2><p class="clause">${esc(order.internalNotes)}</p>` : ""}
   `;
 }
 
@@ -200,7 +226,7 @@ export function openPrintWindow(bodyHtml: string, documentTitle: string) {
   win.document.write(`
     <html>
       <head>
-        <title>${documentTitle}</title>
+        <title>${esc(documentTitle)}</title>
         <style>${BASE_STYLE}</style>
       </head>
       <body>${bodyHtml}</body>
@@ -252,13 +278,14 @@ function pdfComposer(_title: string) {
     y += 16;
   }
   function row(label: string, value: string) {
-    ensureSpace(1, 14);
+    ensureSpace(2, 14);
     doc.setFont("times", "bold");
     doc.setFontSize(10);
     doc.text(`${label}:`, marginX, y);
     doc.setFont("times", "normal");
-    doc.text(value || "—", marginX + 120, y);
-    y += 16;
+    const valueLines = doc.splitTextToSize(value || "—", pageWidth - marginX * 2 - 120);
+    doc.text(valueLines, marginX + 120, y);
+    y += Math.max(valueLines.length, 1) * 13 + 3;
   }
   function paragraph(text: string, numbered?: number) {
     doc.setFont("times", "normal");
@@ -270,7 +297,7 @@ function pdfComposer(_title: string) {
     y += lines.length * 13 + 4;
   }
   function tableItems(items: { productName: string; internalCode: string; quantity: number; unitValue: number; components?: string[] }[]) {
-    ensureSpace(items.length + 2, 14);
+    ensureSpace(3, 14);
     doc.setFont("times", "bold");
     doc.setFontSize(9.5);
     doc.text("Produto", marginX, y);
@@ -285,15 +312,18 @@ function pdfComposer(_title: string) {
     y += 12;
     doc.setFont("times", "normal");
     items.forEach((i) => {
-      ensureSpace(1, 14);
       const componentsLabel = i.components && i.components.length > 0 ? i.components.join(", ") : "—";
-      doc.text(i.productName.slice(0, 20), marginX, y);
-      doc.text(componentsLabel.slice(0, 20), marginX + 150, y);
+      const nameLines: string[] = doc.splitTextToSize(i.productName, 140);
+      const compLines: string[] = doc.splitTextToSize(componentsLabel, 98);
+      const lines = Math.max(nameLines.length, compLines.length, 1);
+      ensureSpace(lines, 13);
+      doc.text(nameLines, marginX, y);
+      doc.text(compLines, marginX + 150, y);
       doc.text(i.internalCode, marginX + 255, y);
       doc.text(String(i.quantity), marginX + 310, y);
       doc.text(money(i.unitValue), marginX + 345, y);
       doc.text(money(i.unitValue * i.quantity), marginX + 420, y);
-      y += 15;
+      y += lines * 12 + 5;
     });
     y += 6;
   }
@@ -334,13 +364,15 @@ function pdfComposer(_title: string) {
 export function downloadContractPdf(order: Order, company: CompanySettings, settings: DocumentSettings) {
   const c = pdfComposer(settings.title);
   c.h1(settings.title);
-  c.subtitle(`Pedido nº ${order.orderNumber}`);
+  c.subtitle(`Pedido nº ${esc(order.orderNumber)}`);
 
   c.h2("Empresa");
   c.row("Nome fantasia", company.tradeName);
   c.row("Razão social", company.legalName);
   c.row("CNPJ", company.cnpj);
   c.row("Telefone", company.phone);
+  c.row("Endereço", company.address);
+  c.row("E-mail", company.email);
 
   c.h2("Cliente");
   c.row("Nome", order.clientName);
@@ -355,17 +387,20 @@ export function downloadContractPdf(order: Order, company: CompanySettings, sett
   c.h2("Datas");
   c.row("Data do pedido", dateBR(order.orderDate));
   c.row("Data do evento", dateBR(order.eventDate));
-  c.row("Data da prova", `${dateBR(order.fittingDate)} ${order.fittingTime || ""}`.trim());
-  c.row("Data da retirada", dateBR(order.pickupDate));
-  c.row("Data da devolução", dateBR(order.returnDate));
+  c.row("Data da prova", `${dateBR(order.fittingDate)} ${esc(order.fittingTime || "")}`.trim());
+  c.row("Data da retirada", `${dateBR(order.pickupDate)} ${order.pickupTime || ""}`.trim());
+  c.row("Data da devolução", `${dateBR(order.returnDate)} ${order.returnTime || ""}`.trim());
 
   c.h2("Valores");
-  c.row("Forma de pagamento", PAYMENT_METHOD_LABELS[order.paymentMethod]);
+  c.row("Forma de pagamento", PAYMENT_METHOD_LABELS[order.paymentMethod] || "—");
+  c.row("Valor dos produtos", money(order.totalValue));
   c.row("Desconto", money(order.discount));
-  c.row("Acréscimo", money(order.surcharge));
+  if (showSurcharge(order)) {
+    c.row("Acréscimo", `${money(order.surcharge)}${order.surchargeReason ? ` — ${order.surchargeReason}` : ""}`);
+  }
   c.row("Crédito usado", money(order.creditUsed));
+  c.row("Total do pedido", money(netTotal(order)));
   c.row("Valor pago", money(order.amountPaid));
-  c.row("Valor total", money(order.totalValue));
   c.row("Valor em aberto", money(order.openValue));
 
   if (order.orderDetails) {
@@ -377,16 +412,16 @@ export function downloadContractPdf(order: Order, company: CompanySettings, sett
   c.paragraph(settings.introText);
   settings.clauses.forEach((clause, idx) => c.paragraph(clause, idx + 1));
 
-  c.signatures(`${order.clientName}\nCPF ${order.clientCpf}`, company.legalName || settings.companySignatureLabel);
+  c.signatures(`${esc(order.clientName)}\nCPF ${esc(order.clientCpf)}`, company.legalName || settings.companySignatureLabel);
   c.footer(settings.footer);
 
-  c.doc.save(`contrato-${order.orderNumber}.pdf`);
+  c.doc.save(`contrato-${esc(order.orderNumber)}.pdf`);
 }
 
 export function downloadWithdrawalPdf(order: Order, company: CompanySettings, settings: DocumentSettings) {
   const c = pdfComposer(settings.title);
   c.h1(settings.title);
-  c.subtitle(`Pedido nº ${order.orderNumber}`);
+  c.subtitle(`Pedido nº ${esc(order.orderNumber)}`);
 
   c.h2("Empresa");
   c.row("Nome fantasia", company.tradeName);
@@ -400,30 +435,30 @@ export function downloadWithdrawalPdf(order: Order, company: CompanySettings, se
   c.tableItems(order.items);
 
   c.h2("Datas");
-  c.row("Data da retirada", dateBR(order.pickupDate));
-  c.row("Data da devolução", dateBR(order.returnDate));
+  c.row("Data da retirada", `${dateBR(order.pickupDate)} ${order.pickupTime || ""}`.trim());
+  c.row("Data da devolução", `${dateBR(order.returnDate)} ${order.returnTime || ""}`.trim());
 
   c.h2("Cláusulas");
   c.paragraph(settings.introText);
   settings.clauses.forEach((clause, idx) => c.paragraph(clause, idx + 1));
 
-  c.signatures(`${order.clientName}\nCPF ${order.clientCpf}`, company.legalName || settings.companySignatureLabel);
+  c.signatures(`${esc(order.clientName)}\nCPF ${esc(order.clientCpf)}`, company.legalName || settings.companySignatureLabel);
   c.footer(settings.footer);
 
-  c.doc.save(`retirada-${order.orderNumber}.pdf`);
+  c.doc.save(`retirada-${esc(order.orderNumber)}.pdf`);
 }
 
 /** ---------------- E-mail (mailto — funciona sem backend nem conta externa) ---------------- */
 
 export function buildContractMailto(order: Order, clientEmail: string | undefined) {
-  const subject = encodeURIComponent(`Contrato — Pedido ${order.orderNumber} — Diamond Sect`);
+  const subject = encodeURIComponent(`Contrato — Pedido ${esc(order.orderNumber)} — Diamond Sect`);
   const body = encodeURIComponent(
-    `Olá ${order.clientName},\n\n` +
-      `Segue o resumo do seu contrato referente ao pedido ${order.orderNumber}:\n\n` +
+    `Olá ${esc(order.clientName)},\n\n` +
+      `Segue o resumo do seu contrato referente ao pedido ${esc(order.orderNumber)}:\n\n` +
       `Produtos: ${order.items.map((i) => `${i.productName} (x${i.quantity})`).join(", ")}\n` +
       `Data da retirada: ${dateBR(order.pickupDate)}\n` +
       `Data da devolução: ${dateBR(order.returnDate)}\n` +
-      `Valor total: ${money(order.totalValue)}\n` +
+      `Valor total: ${money(netTotal(order))}\n` +
       `Valor em aberto: ${money(order.openValue)}\n\n` +
       `Obs.: anexe o arquivo PDF do contrato (baixado pelo sistema) antes de enviar este e-mail.\n\n` +
       `Atenciosamente,\nDiamond Sect`

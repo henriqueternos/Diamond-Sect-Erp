@@ -46,7 +46,8 @@ export const PaymentService = {
     data: { amount: number; method: PaymentMethod; cardBrand?: string; installments?: number; date: string },
     user: { id: string; name: string }
   ) {
-    if (data.amount <= 0) throw new Error("Informe um valor de pagamento maior que zero.");
+    if (!(data.amount > 0)) throw new Error("Informe um valor de pagamento maior que zero.");
+    if (!data.date) throw new Error("Informe a data do pagamento.");
 
     const orderRef = doc(db, "orders", order.id);
     const paymentRef = doc(paymentsCol);
@@ -58,11 +59,22 @@ export const PaymentService = {
       const current = snap.data() as Order;
       orderNumberForLog = current.orderNumber;
 
+      if (current.status === "cancelado") {
+        throw new Error("Este pedido está cancelado — não é possível lançar pagamento.");
+      }
       const newAmountPaid = (current.amountPaid || 0) + data.amount;
-      const newOpenValue = Math.max(
-        (current.totalValue || 0) - (current.discount || 0) + (current.surcharge || 0) - (current.creditUsed || 0) - newAmountPaid,
-        0
-      );
+      const netDue =
+        (current.totalValue || 0) - (current.discount || 0) + (current.surcharge || 0) - (current.creditUsed || 0);
+      if (newAmountPaid - netDue > 0.009) {
+        const open = Math.max(netDue - (current.amountPaid || 0), 0);
+        throw new Error(
+          `O valor informado é maior que o valor em aberto do pedido (${open.toLocaleString("pt-BR", {
+            style: "currency",
+            currency: "BRL",
+          })}).`
+        );
+      }
+      const newOpenValue = Math.max(netDue - newAmountPaid, 0);
 
       tx.set(paymentRef, {
         orderId: order.id,

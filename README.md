@@ -137,13 +137,13 @@ projeto → Seus apps → SDK setup and configuration).
 3. Em **Regras**, cole o conteúdo do arquivo `firestore.rules` deste projeto
    (ele já reflete a regra "só admin exclui pedidos").
 
-## 5. Criar o administrador inicial (Henrique)
+## 5. Criar o administrador inicial
 
-Como o Firebase Authentication exige e-mail, o login "Henrique" é apenas um
+Como o Firebase Authentication exige e-mail, o login do administrador é apenas um
 apelido interno vinculado a um e-mail técnico. Passo a passo:
 
 1. **Authentication → Users → Add user**
-   - E-mail: `henrique@diamondsect.local`
+   - E-mail: `admin@diamondsect.local`
    - Senha: `SUA_SENHA_FORTE`
    - Copie o **UID** gerado.
 
@@ -153,9 +153,9 @@ apelido interno vinculado a um e-mail técnico. Passo a passo:
 
 ```json
 {
-  "loginUsername": "Henrique",
-  "email": "henrique@diamondsect.local",
-  "name": "Henrique",
+  "loginUsername": "admin",
+  "email": "admin@diamondsect.local",
+  "name": "Administrador",
   "role": "admin",
   "active": true,
   "permissions": {}
@@ -167,10 +167,10 @@ apelido interno vinculado a um e-mail técnico. Passo a passo:
    campo para o administrador (isso será usado para os demais funcionários,
    na Fase 6).
 
-3. Pronto — na tela de login, use usuário `Henrique` e senha `SUA_SENHA_FORTE`.
+3. Pronto — na tela de login, use o usuário `admin` e senha `SUA_SENHA_FORTE`.
 
 > Esse passo manual é necessário apenas para o **primeiro** administrador
-> (Henrique), já que é o único usuário que existe antes de o sistema ter
+> (administrador), já que é o único usuário que existe antes de o sistema ter
 > login para criar os demais. A partir daí, use **Configurações →
 > Funcionários** dentro do próprio sistema para cadastrar o restante da
 > equipe com um clique — sem precisar voltar ao Firebase Console.
@@ -1244,3 +1244,20 @@ Firebase (ver `firestore.rules` e o guia de ativação em PDF).
 - Configure `src/cloudinary/cloudinaryConfig.ts` com o *Cloud name* e o nome do *Upload preset* (modo **Unsigned**).
 - Nunca coloque API Secret no projeto. Nenhuma mudança nas regras do Firestore é necessária.
 - Miniaturas (pequenas) aparecem ao lado do nome do produto no Estoque, na busca global, no seletor de produto do Novo Pedido e na janela de disponibilidade.
+
+## Revisão geral (out/2026)
+- Textos de exemplo e nomes pessoais removidos das telas (placeholders neutros).
+- Datas: o sistema usava a data em UTC; depois das 21h (Brasil) "hoje" virava amanhã (caixa, pagamentos, Painel, notificações). Agora tudo usa a data local. "Hoje"/"atrasado" também deixaram de errar por 1 dia.
+- Pedido: ao salvar, a disponibilidade é conferida de novo; ao editar um pedido ele não conflita mais consigo mesmo; conflito por quantidade só ocorre se passar do total em estoque (peça única continua conflitando).
+- Pagamentos: bloqueia valor maior que o em aberto e lançamento em pedido cancelado.
+- Contrato/PDF: textos do cliente agora são escapados no HTML; tabela do PDF quebra linha (nome do produto não é mais cortado); mostra "Total do pedido" líquido; PDF inclui endereço e e-mail da empresa.
+- Login: erro de gravação de log não mostra mais "Missing or insufficient permissions"; mensagem única "Usuário ou senha inválidos"; perfil ausente é tratado.
+- Cadastros: CPF e código de produto duplicados são bloqueados; clientes com pedidos e produtos em pedido em andamento não podem ser excluídos; erros ao salvar aparecem na tela; login de funcionário é único.
+- Importação de estoque: cabeçalhos reconhecidos ignorando acento, maiúscula e variações ("Valor do aluguel" etc.).
+- Rótulos de cargo em português; semana do Financeiro começa na segunda (igual ao Painel); ícone e descrição da página.
+
+## Pedido: acréscimo, datas e visual (out/2026)
+- Acréscimo com duas opções: (1) somar ao valor de uma peça do pedido — o contrato mostra só o valor final, sem citar acréscimo; (2) mostrar no contrato, com campo para o motivo (ex.: serviço extra).
+- Datas obrigatórias no novo pedido: evento, prova, retirada e devolução (venda não exige devolução). Horários de prova, retirada e devolução são opcionais e aparecem no contrato.
+- Tela de novo pedido reorganizada em seções numeradas (Cliente, Produtos, Datas, Valores, Pagamentos, Observações).
+- Botões e ícones com contorno dourado fino.

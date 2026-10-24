@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { EmployeeService, ALL_MODULES, ALL_ACTIONS, emptyPermissions, defaultSellerPermissions } from "../../services/EmployeeService";
-import { AppUser, ModuleKey, PermissionAction, Permissions, UserRole } from "../../types";
+import { AppUser, ModuleKey, PermissionAction, Permissions, UserRole, ROLE_LABELS } from "../../types";
 import { Modal } from "../../components/Modal";
 import { useAuth } from "../../hooks/useAuth";
 
@@ -204,7 +204,7 @@ export default function EmployeesTab() {
               <tr key={e.id}>
                 <td className="text-mist-100">{e.name}</td>
                 <td>{e.loginUsername}</td>
-                <td className="capitalize">{e.role === "admin" ? "Administrador" : e.role}</td>
+                <td>{ROLE_LABELS[e.role] || e.role}</td>
                 <td>
                   <span className={`badge ${e.active ? "bg-success/15 text-success" : "bg-ink-600 text-mist-500"}`}>
                     {e.active ? "Ativo" : "Inativo"}
@@ -267,7 +267,7 @@ export default function EmployeesTab() {
           </div>
 
           <p className="text-xs text-mist-500">
-            Login e e-mail não podem ser alterados por aqui (estão vinculados à conta no Firebase Authentication).
+            Login e e-mail não podem ser alterados por aqui (estão vinculados à conta de acesso do funcionário).
             Regra fixa: cancelar um pedido exige aprovação de administrador ou gerente, independentemente desta matriz.
           </p>
           <div className="flex justify-end gap-2">
@@ -291,7 +291,7 @@ export default function EmployeesTab() {
             </div>
             <div>
               <label>Login (usado para entrar no sistema)</label>
-              <input required value={loginUsername} onChange={(e) => setLoginUsername(e.target.value)} placeholder="Ex: Maria" />
+              <input required value={loginUsername} onChange={(e) => setLoginUsername(e.target.value)} placeholder="Nome de usuário para login" />
             </div>
             <div>
               <label>E-mail interno (vinculado ao login)</label>
@@ -300,7 +300,7 @@ export default function EmployeesTab() {
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="maria@diamondsect.local"
+                placeholder="usuario@diamondsect.local"
               />
             </div>
             <div>

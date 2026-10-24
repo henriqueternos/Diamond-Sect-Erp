@@ -26,7 +26,7 @@ export const DEFAULT_CONTRACT_SETTINGS_LOCACAO: DocumentSettings = {
 export const DEFAULT_CONTRACT_SETTINGS_VENDA: DocumentSettings = {
   title: "CONTRATO DE COMPRA E VENDA",
   introText:
-    "Pelo presente instrumento particular, de um lado a empresa abaixo qualificada, na condição de vendedora, e de outro, o(a) cliente identificado(a), na condição de compradora(a), ajustam entre si o presente contrato de compra e venda, que se rege pelas cláusulas a seguir.",
+    "Pelo presente instrumento particular, de um lado a empresa abaixo qualificada, na condição de vendedora, e de outro, o(a) cliente identificado(a), na condição de comprador(a), ajustam entre si o presente contrato de compra e venda, que se rege pelas cláusulas a seguir.",
   clauses: [
     "A propriedade do(s) produto(s) é transferida ao(à) cliente mediante a quitação integral do valor acordado.",
     "O(a) cliente declara ter examinado o(s) produto(s) e aceita seu estado no ato da entrega.",

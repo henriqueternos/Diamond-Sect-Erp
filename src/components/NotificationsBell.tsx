@@ -3,24 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { OrderService } from "../services/OrderService";
 import { LogService } from "../services/LogService";
 import { LogEntry, Order } from "../types";
-
-function isToday(v?: string) {
-  if (!v) return false;
-  return new Date(v).toDateString() === new Date().toDateString();
-}
-function isTomorrow(v?: string) {
-  if (!v) return false;
-  const t = new Date();
-  t.setDate(t.getDate() + 1);
-  return new Date(v).toDateString() === t.toDateString();
-}
-function isOverdue(v?: string) {
-  if (!v) return false;
-  const d = new Date(v);
-  const now = new Date();
-  now.setHours(0, 0, 0, 0);
-  return d.getTime() < now.getTime();
-}
+import { isToday, isTomorrow, isOverdue } from "../utils/dates";
 
 interface Alert {
   id: string;

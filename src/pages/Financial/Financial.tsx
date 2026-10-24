@@ -15,6 +15,7 @@ import { OrderService } from "../../services/OrderService";
 import { PaymentService } from "../../services/PaymentService";
 import { ClientService } from "../../services/ClientService";
 import { Client, Order, Payment, PAYMENT_METHOD_LABELS } from "../../types";
+import { todayYMD, toYMD } from "../../utils/dates";
 
 function money(v: number) {
   return (v || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -24,7 +25,7 @@ function toDate(v: string) {
 }
 function startOfWeek(d: Date) {
   const c = new Date(d);
-  c.setDate(c.getDate() - c.getDay());
+  c.setDate(c.getDate() - ((c.getDay() + 6) % 7)); // semana começa na segunda (igual ao Painel)
   c.setHours(0, 0, 0, 0);
   return c;
 }
@@ -39,9 +40,9 @@ export default function Financial() {
   const [rangeStart, setRangeStart] = useState(() => {
     const d = new Date();
     d.setDate(d.getDate() - 29);
-    return d.toISOString().slice(0, 10);
+    return toYMD(d);
   });
-  const [rangeEnd, setRangeEnd] = useState(() => new Date().toISOString().slice(0, 10));
+  const [rangeEnd, setRangeEnd] = useState(() => todayYMD());
 
   useEffect(() => OrderService.subscribeAll(setOrders), []);
   useEffect(() => PaymentService.subscribeAll(setPayments), []);
@@ -59,7 +60,7 @@ export default function Financial() {
 
   /** ---- Receita por período fixo (baseada nos pagamentos recebidos) ---- */
   const now = new Date();
-  const todayStr = now.toISOString().slice(0, 10);
+  const todayStr = toYMD(now);
   const weekStart = startOfWeek(now);
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
   const yearStart = new Date(now.getFullYear(), 0, 1);

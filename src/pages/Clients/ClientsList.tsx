@@ -145,6 +145,13 @@ export default function ClientsList() {
       return;
     }
 
+    const cpfDigits = onlyDigits(form.cpf);
+    if (cpfDigits && clients.some((c) => c.id !== editing?.id && onlyDigits(c.cpf || "") === cpfDigits)) {
+      setFieldErrors({ cpf: true });
+      setFormError("Já existe um cliente cadastrado com esse CPF.");
+      return;
+    }
+
     setFieldErrors({});
     setFormError(null);
     setSaving(true);
@@ -161,6 +168,8 @@ export default function ClientsList() {
         await ClientService.create(form);
       }
       setModalOpen(false);
+    } catch (err: any) {
+      setFormError(err?.message || "Não foi possível salvar o cliente. Tente novamente.");
     } finally {
       setSaving(false);
     }
@@ -168,8 +177,12 @@ export default function ClientsList() {
 
   async function handleDelete() {
     if (!toDelete) return;
-    await ClientService.remove(toDelete.id);
-    setToDelete(null);
+    try {
+      await ClientService.remove(toDelete.id);
+      setToDelete(null);
+    } catch (err: any) {
+      alert(err?.message || "Não foi possível excluir o cliente.");
+    }
   }
 
   async function handleAdjustCredit(e: React.FormEvent) {
@@ -442,7 +455,7 @@ export default function ClientsList() {
             <input
               value={adjustCreditReason}
               onChange={(e) => setAdjustCreditReason(e.target.value)}
-              placeholder="Ex: crédito de cortesia, correção de cadastro..."
+              placeholder="Motivo do ajuste (ficará registrado no histórico)"
             />
           </div>
           {adjustCreditError && <p className="text-sm text-danger">{adjustCreditError}</p>}

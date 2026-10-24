@@ -14,10 +14,17 @@ const logsCol = collection(db, "logs");
 
 export const LogService = {
   async record(entry: Omit<LogEntry, "id" | "createdAt">) {
-    await addDoc(logsCol, {
-      ...entry,
-      createdAt: serverTimestamp(),
-    });
+    // O registro de auditoria nunca pode derrubar a ação do usuário (ex.: a
+    // tentativa de login que falha acontece antes de a pessoa estar logada,
+    // e o Firestore recusa a gravação do log nesse caso).
+    try {
+      await addDoc(logsCol, {
+        ...entry,
+        createdAt: serverTimestamp(),
+      });
+    } catch (err) {
+      console.warn("Não foi possível gravar o log:", err);
+    }
   },
 
   /** Escuta os últimos N logs em tempo real (usado no Dashboard / Auditoria). */

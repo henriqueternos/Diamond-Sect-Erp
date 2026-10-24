@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useRef, useState, type ChangeEvent } from "react";
 import { CloudinaryService } from "../services/CloudinaryService";
 import { isCloudinaryConfigured } from "../cloudinary/cloudinaryConfig";
 
@@ -14,7 +14,7 @@ export function ImageUpload({ value = "", onChange, folder }: Props) {
   const [error, setError] = useState("");
   const configured = isCloudinaryConfigured();
 
-  async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
+  async function handleFile(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     e.target.value = "";
     if (!file) return;

@@ -14,11 +14,12 @@ import {
 import { db } from "../firebase/firebaseConfig";
 import { CashEntry, CashRegister } from "../types";
 import { LogService } from "./LogService";
+import { todayYMD } from "../utils/dates";
 
 const cashFlowCol = collection(db, "cashFlow");
 
 function todayId() {
-  return new Date().toISOString().slice(0, 10);
+  return todayYMD();
 }
 
 function registerRef(id: string) {

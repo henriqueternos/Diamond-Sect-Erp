@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Client, Order, OrderItem, OrderType, PaymentMethod, PAYMENT_METHOD_LABELS, Product, ClientCategory, CLIENT_CATEGORY_LABELS } from "../../types";
+import { Client, Order, OrderItem, OrderType, PaymentMethod, PAYMENT_METHOD_LABELS, Product, ClientCategory, CLIENT_CATEGORY_LABELS, ORDER_STATUS_LABELS, SurchargeMode } from "../../types";
 import { ClientService } from "../../services/ClientService";
 import { CloudinaryService } from "../../services/CloudinaryService";
 import { ProductService } from "../../services/ProductService";
@@ -7,7 +7,7 @@ import { OrderService, ConflictInfo, calcTotals } from "../../services/OrderServ
 import { PaymentService } from "../../services/PaymentService";
 import { CustomerCreditService } from "../../services/CustomerCreditService";
 import { InvoiceService } from "../../services/InvoiceService";
-import { dateBR } from "../../utils/dates";
+import { dateBR, todayYMD } from "../../utils/dates";
 import { effectiveItemComponents } from "../../utils/components";
 import { useAuth } from "../../hooks/useAuth";
 
@@ -32,23 +32,35 @@ export function OrderForm({
   // em modo de edição, precisa buscar o registro existente (se houver).
   const [willIssueInvoice, setWillIssueInvoice] = useState(true);
   const [clientCategoryNotes, setClientCategoryNotes] = useState(existingOrder?.clientCategoryNotes || "");
-  const [items, setItems] = useState<OrderItem[]>(existingOrder?.items || []);
+  // `items` guarda o preço BASE de cada peça. O acréscimo "em peça" é somado
+  // por cima disso (effectiveItems), para poder ser editado depois sem perder o preço original.
+  const [items, setItems] = useState<OrderItem[]>(
+    (existingOrder?.items || []).map((i) => (i.baseUnitValue !== undefined ? { ...i, unitValue: i.baseUnitValue } : i))
+  );
   const [pickProductId, setPickProductId] = useState("");
   const [productSearchTerm, setProductSearchTerm] = useState("");
   const [clientSearchTerm, setClientSearchTerm] = useState("");
   const [pickQty, setPickQty] = useState(1);
   const [pickComponents, setPickComponents] = useState<string[]>([]);
 
-  const [orderDate, setOrderDate] = useState(existingOrder?.orderDate || (() => new Date().toISOString().slice(0, 10))());
+  const [orderDate, setOrderDate] = useState(existingOrder?.orderDate || (() => todayYMD())());
   const [eventDate, setEventDate] = useState(existingOrder?.eventDate || "");
   const [fittingDate, setFittingDate] = useState(existingOrder?.fittingDate || "");
   const [fittingTime, setFittingTime] = useState(existingOrder?.fittingTime || "");
   const [fittingNotes, setFittingNotes] = useState(existingOrder?.fittingNotes || "");
   const [pickupDate, setPickupDate] = useState(existingOrder?.pickupDate || "");
+  const [pickupTime, setPickupTime] = useState(existingOrder?.pickupTime || "");
   const [returnDate, setReturnDate] = useState(existingOrder?.returnDate || "");
+  const [returnTime, setReturnTime] = useState(existingOrder?.returnTime || "");
 
   const [discount, setDiscount] = useState(existingOrder?.discount || 0);
-  const [surcharge, setSurcharge] = useState(existingOrder?.surcharge || 0);
+  const embeddedSurcharge = (existingOrder?.items || []).reduce((sum, i) => sum + (i.surchargeIncluded || 0), 0);
+  const [surcharge, setSurcharge] = useState(embeddedSurcharge > 0 ? embeddedSurcharge : existingOrder?.surcharge || 0);
+  const [surchargeMode, setSurchargeMode] = useState<SurchargeMode>(embeddedSurcharge > 0 ? "peca" : "contrato");
+  const [surchargeReason, setSurchargeReason] = useState(existingOrder?.surchargeReason || "");
+  const [surchargeItemIndex, setSurchargeItemIndex] = useState<number>(
+    (existingOrder?.items || []).findIndex((i) => (i.surchargeIncluded || 0) > 0)
+  );
   const [creditUsed, setCreditUsed] = useState(existingOrder?.creditUsed || 0);
   const [payments, setPayments] = useState<{ amount: number; method: PaymentMethod; cardBrand?: string; installments?: number }[]>([]);
   const [pickPaymentAmount, setPickPaymentAmount] = useState(0);
@@ -95,16 +107,48 @@ export function OrderForm({
   const filteredProducts = useMemo(() => ProductService.search(products, productSearchTerm), [products, productSearchTerm]);
   const filteredClients = useMemo(() => ClientService.search(clients, clientSearchTerm), [clients, clientSearchTerm]);
   const totalPaidSoFar = isEdit ? existingOrder!.amountPaid : payments.reduce((s, p) => s + p.amount, 0);
-  const totals = useMemo(() => calcTotals({ items, discount, surcharge, creditUsed, amountPaid: totalPaidSoFar }), [
-    items,
-    discount,
-    surcharge,
-    creditUsed,
-    totalPaidSoFar,
-  ]);
+  // Itens "de verdade": se o acréscimo foi lançado numa peça, o valor dela já vem somado.
+  const effectiveItems: OrderItem[] = useMemo(
+    () =>
+      items.map((it, idx) => {
+        const { surchargeIncluded: _a, baseUnitValue: _b, ...rest } = it;
+        if (surchargeMode === "peca" && surcharge > 0 && idx === surchargeItemIndex) {
+          const qty = it.quantity || 1;
+          const perUnit = Math.round((surcharge / qty) * 100) / 100;
+          return {
+            ...rest,
+            unitValue: Math.round((rest.unitValue + perUnit) * 100) / 100,
+            baseUnitValue: rest.unitValue,
+            surchargeIncluded: Math.round(perUnit * qty * 100) / 100,
+          };
+        }
+        return rest;
+      }),
+    [items, surchargeMode, surcharge, surchargeItemIndex]
+  );
+  // Só o acréscimo "do contrato" entra no campo surcharge do pedido.
+  const effectiveSurcharge = surchargeMode === "contrato" ? surcharge : 0;
+  const totals = useMemo(
+    () => calcTotals({ items: effectiveItems, discount, surcharge: effectiveSurcharge, creditUsed, amountPaid: totalPaidSoFar }),
+    [effectiveItems, discount, effectiveSurcharge, creditUsed, totalPaidSoFar]
+  );
+  const netTotal = Math.max(
+    totals.totalValue - (discount || 0) + (effectiveSurcharge || 0) - (creditUsed || 0),
+    0
+  );
 
   function addPayment() {
     if (pickPaymentAmount <= 0) return;
+    if (pickPaymentAmount - totals.openValue > 0.009) {
+      setErrorMsg(
+        `O pagamento é maior que o valor em aberto (${totals.openValue.toLocaleString("pt-BR", {
+          style: "currency",
+          currency: "BRL",
+        })}).`
+      );
+      return;
+    }
+    setErrorMsg(null);
     setPayments((prev) => [
       ...prev,
       {
@@ -191,6 +235,7 @@ export function OrderForm({
 
   function removeItem(index: number) {
     setItems((prev) => prev.filter((_, i) => i !== index));
+    setSurchargeItemIndex((cur) => (cur === index ? -1 : cur > index ? cur - 1 : cur));
     setConflicts([]);
     setConflictCheckDone(false);
     setConflictsAcknowledged(false);
@@ -203,13 +248,13 @@ export function OrderForm({
       setErrorMsg("Adicione ao menos um produto antes de verificar disponibilidade.");
       return;
     }
-    if (!pickupDate || !returnDate) {
+    if (!pickupDate || !(returnDate || type === "venda")) {
       setErrorMsg('Preencha "Data da retirada" e "Data da devolução" antes de verificar disponibilidade.');
       return;
     }
     setCheckingConflicts(true);
     try {
-      const found = await OrderService.checkConflicts(items, { pickupDate, returnDate, fittingDate, eventDate }, 1);
+      const found = await OrderService.checkConflicts(effectiveItems, { pickupDate, returnDate: returnDate || pickupDate, fittingDate, eventDate }, 1, isEdit ? existingOrder!.id : undefined);
       setConflicts(found);
       setConflictsAcknowledged(false);
       setConflictCheckDone(true);
@@ -235,6 +280,35 @@ export function OrderForm({
       setErrorMsg("Selecione a categoria do cliente.");
       return;
     }
+    // Datas obrigatórias (horários são opcionais).
+    const missingDates: string[] = [];
+    if (!eventDate) missingDates.push("data do evento");
+    if (!fittingDate) missingDates.push("data da prova");
+    if (!pickupDate) missingDates.push("data da retirada");
+    if (type === "locacao" && !returnDate) missingDates.push("data da devolução");
+    if (missingDates.length > 0) {
+      setErrorMsg(`Preencha as datas obrigatórias: ${missingDates.join(", ")}.`);
+      return;
+    }
+    if (returnDate && pickupDate && returnDate < pickupDate) {
+      setErrorMsg("A data da devolução não pode ser anterior à data da retirada.");
+      return;
+    }
+    if (surcharge > 0) {
+      if (surchargeMode === "peca" && !(surchargeItemIndex >= 0 && surchargeItemIndex < items.length)) {
+        setErrorMsg("Selecione em qual peça do pedido o acréscimo será aplicado.");
+        return;
+      }
+      const reasonRequired = !(isEdit && (existingOrder!.surcharge || 0) > 0 && !existingOrder!.surchargeReason);
+      if (surchargeMode === "contrato" && reasonRequired && !surchargeReason.trim()) {
+        setErrorMsg("Informe o motivo do acréscimo que aparecerá no contrato.");
+        return;
+      }
+    }
+    if (!isEdit && totalPaidSoFar - netTotal > 0.009) {
+      setErrorMsg("O total dos pagamentos lançados é maior que o valor do pedido. Remova ou ajuste um pagamento.");
+      return;
+    }
     if (conflicts.length > 0 && !conflictsAcknowledged) {
       setErrorMsg('Há conflitos de disponibilidade. Marque "Liberar mesmo com conflito" para continuar.');
       return;
@@ -254,6 +328,34 @@ export function OrderForm({
       return;
     }
 
+    // Confere a disponibilidade de novo na hora de salvar (as datas ou itens
+    // podem ter mudado depois da última verificação, ou ela nunca ter sido
+    // feita) — só avisa se ainda não houver liberação consciente.
+    if (pickupDate && !conflictsAcknowledged) {
+      setSaving(true);
+      try {
+        const fresh = await OrderService.checkConflicts(
+          effectiveItems,
+          { pickupDate, returnDate: returnDate || pickupDate, fittingDate, eventDate },
+          1,
+          isEdit ? existingOrder!.id : undefined
+        );
+        if (fresh.length > 0) {
+          setConflicts(fresh);
+          setConflictCheckDone(true);
+          setConflictsAcknowledged(false);
+          setErrorMsg('Há conflitos de disponibilidade para este período. Veja a lista abaixo e marque "Liberar mesmo com conflito" para continuar.');
+          setSaving(false);
+          return;
+        }
+      } catch (err: any) {
+        setSaving(false);
+        setErrorMsg(err.message || "Não foi possível verificar a disponibilidade agora. Tente de novo.");
+        return;
+      }
+      setSaving(false);
+    }
+
     setSaving(true);
     try {
       if (isEdit) {
@@ -265,7 +367,7 @@ export function OrderForm({
             clientCpf: client.cpf,
             clientPhone: client.phone,
             type,
-            items,
+            items: effectiveItems,
             clientCategory: clientCategory as ClientCategory,
             clientCategoryNotes,
             orderDate,
@@ -274,9 +376,13 @@ export function OrderForm({
             fittingTime,
             fittingNotes,
             pickupDate,
+            pickupTime,
             returnDate,
+            returnTime,
             discount,
-            surcharge,
+            surcharge: effectiveSurcharge,
+            surchargeMode: surcharge > 0 ? surchargeMode : null,
+            surchargeReason: surcharge > 0 && surchargeMode === "contrato" ? surchargeReason.trim() : "",
             creditUsed,
             orderDetails,
             internalNotes,
@@ -321,7 +427,7 @@ export function OrderForm({
         clientCpf: client.cpf,
         clientPhone: client.phone,
         type,
-        items,
+        items: effectiveItems,
         clientCategory: clientCategory as ClientCategory,
         clientCategoryNotes,
         orderDate,
@@ -330,9 +436,13 @@ export function OrderForm({
         fittingTime,
         fittingNotes,
         pickupDate,
+        pickupTime,
         returnDate,
+        returnTime,
         discount,
-        surcharge,
+        surcharge: effectiveSurcharge,
+        surchargeMode: surcharge > 0 ? surchargeMode : null,
+        surchargeReason: surcharge > 0 && surchargeMode === "contrato" ? surchargeReason.trim() : "",
         creditUsed,
         // O valor pago começa em 0 aqui de propósito: cada pagamento lançado
         // abaixo vira um registro de verdade (PaymentService), para aparecer
@@ -390,116 +500,98 @@ export function OrderForm({
     }
   }
 
+  const money = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+  const isSale = type === "venda";
+
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
-      {/* Cliente e tipo */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="md:col-span-2">
-          <label>Cliente *</label>
-          {!isEdit && (
-            <input
-              value={clientSearchTerm}
-              onChange={(e) => setClientSearchTerm(e.target.value)}
-              placeholder="Buscar por nome, CPF, telefone..."
-              className="mb-2"
-            />
-          )}
-          <select value={clientId} onChange={(e) => setClientId(e.target.value)} required disabled={isEdit}>
-            <option value="">{filteredClients.length === 0 ? "Nenhum cliente encontrado" : "Selecione um cliente..."}</option>
-            {(isEdit ? clients : filteredClients).map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.fullName} — {c.cpf}
-              </option>
-            ))}
-          </select>
-          {!isEdit && clientSearchTerm && (
-            <p className="text-[11px] text-mist-500 mt-1">{filteredClients.length} encontrado(s)</p>
-          )}
-          {isEdit && (
-            <p className="text-[11px] text-mist-500 mt-1">
-              O cliente não pode ser trocado num pedido já criado (isso protegeria o histórico e o crédito da pessoa
-              errada). Cancele e crie um novo pedido se precisar mudar o cliente.
-            </p>
-          )}
-          {client && !isEdit && (
-            <p className="text-xs text-mist-500 mt-1">
-              {client.phone} · Crédito disponível:{" "}
-              {client.availableCredit.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
-            </p>
-          )}
-        </div>
-        <div>
-          <label>Tipo *</label>
-          <select value={type} onChange={(e) => setType(e.target.value as OrderType)}>
-            <option value="locacao">Locação</option>
-            <option value="venda">Venda</option>
-          </select>
-        </div>
-      </div>
-
-      {/* Categoria do cliente */}
-      <div className="card p-4 space-y-3">
-        <p className="font-display text-lg">Categoria do cliente *</p>
-        <div className="flex flex-wrap gap-4">
-          {(Object.entries(CLIENT_CATEGORY_LABELS) as [ClientCategory, string][]).map(([value, label]) => (
-            <label key={value} className="flex items-center gap-2 text-sm text-mist-100 normal-case font-normal cursor-pointer">
+    <form onSubmit={handleSubmit} className="space-y-5 max-w-5xl mx-auto">
+      {/* 1 — Cliente e tipo */}
+      <Section n={1} title="Cliente e tipo de pedido" hint="Quem está fazendo o pedido e se é locação ou venda.">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="md:col-span-2">
+            <label>Cliente *</label>
+            {!isEdit && (
               <input
-                type="radio"
-                name="clientCategory"
-                value={value}
-                checked={clientCategory === value}
-                onChange={() => setClientCategory(value)}
-                className="!w-auto"
+                value={clientSearchTerm}
+                onChange={(e) => setClientSearchTerm(e.target.value)}
+                placeholder="Buscar por nome, CPF, telefone..."
+                className="mb-2"
               />
-              {label}
-            </label>
-          ))}
+            )}
+            <select value={clientId} onChange={(e) => setClientId(e.target.value)} required disabled={isEdit}>
+              <option value="">{filteredClients.length === 0 ? "Nenhum cliente encontrado" : "Selecione um cliente..."}</option>
+              {(isEdit ? clients : filteredClients).map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.fullName} — {c.cpf}
+                </option>
+              ))}
+            </select>
+            {!isEdit && clientSearchTerm && <p className="text-[11px] text-mist-500 mt-1">{filteredClients.length} encontrado(s)</p>}
+            {isEdit && (
+              <p className="text-[11px] text-mist-500 mt-1">
+                O cliente não pode ser trocado num pedido já criado (isso protegeria o histórico e o crédito da pessoa
+                errada). Cancele e crie um novo pedido se precisar mudar o cliente.
+              </p>
+            )}
+            {client && !isEdit && (
+              <p className="text-xs text-mist-500 mt-1">
+                {client.phone} · Crédito disponível: {money(client.availableCredit)}
+              </p>
+            )}
+          </div>
+          <div>
+            <label>Tipo *</label>
+            <select value={type} onChange={(e) => setType(e.target.value as OrderType)}>
+              <option value="locacao">Locação</option>
+              <option value="venda">Venda</option>
+            </select>
+          </div>
         </div>
-        <div>
-          <label>Observações da categoria (uso interno — não aparece no contrato)</label>
-          <textarea
-            rows={2}
-            value={clientCategoryNotes}
-            onChange={(e) => setClientCategoryNotes(e.target.value)}
-            placeholder="Digite informações adicionais (opcional)..."
-          />
-        </div>
-      </div>
 
-      {/* Nota fiscal — controle à parte, fica numa coleção própria */}
-      <div className="card p-4 space-y-2">
-        <p className="font-display text-lg">Nota fiscal</p>
-        <div className="flex gap-4">
-          <label className="flex items-center gap-2 text-sm text-mist-100 normal-case font-normal cursor-pointer">
-            <input type="radio" name="willIssueInvoice" className="!w-auto" checked={willIssueInvoice} onChange={() => setWillIssueInvoice(true)} />
-            Emitir nota fiscal para este pedido
-          </label>
-          <label className="flex items-center gap-2 text-sm text-mist-100 normal-case font-normal cursor-pointer">
-            <input type="radio" name="willIssueInvoice" className="!w-auto" checked={!willIssueInvoice} onChange={() => setWillIssueInvoice(false)} />
-            Não emitir
-          </label>
-        </div>
-        <p className="text-[11px] text-mist-500">
-          Isso só marca a intenção, para você acompanhar em "Notas Fiscais" no menu — a emissão em si continua
-          sendo feita no seu emissor fiscal de costume.
-        </p>
-      </div>
-
-      {/* Produtos */}
-      <div className="card p-4 space-y-3">
-        <p className="font-display text-lg">Produtos</p>
-        <div className="flex flex-wrap gap-2 items-end">
-          <div className="flex-1 min-w-[220px]">
-            <label>Buscar produto</label>
-            <input
-              value={productSearchTerm}
-              onChange={(e) => setProductSearchTerm(e.target.value)}
-              placeholder="Nome, código, marca, cor..."
+        <div className="mt-4 pt-4 border-t border-ink-600/70 space-y-3">
+          <p className="text-sm font-semibold text-mist-100">Categoria do cliente *</p>
+          <div className="flex flex-wrap gap-2">
+            {(Object.entries(CLIENT_CATEGORY_LABELS) as [ClientCategory, string][]).map(([value, label]) => (
+              <label
+                key={value}
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-full border text-sm normal-case font-medium cursor-pointer transition-colors mb-0 ${
+                  clientCategory === value
+                    ? "border-champagne bg-champagne-dim/60 text-mist-100"
+                    : "border-champagne-soft/50 text-mist-300 hover:bg-champagne-dim/30"
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="clientCategory"
+                  value={value}
+                  checked={clientCategory === value}
+                  onChange={() => setClientCategory(value)}
+                  className="!w-auto"
+                />
+                {label}
+              </label>
+            ))}
+          </div>
+          <div>
+            <label>Observações da categoria (uso interno — não aparece no contrato)</label>
+            <textarea
+              rows={2}
+              value={clientCategoryNotes}
+              onChange={(e) => setClientCategoryNotes(e.target.value)}
+              placeholder="Digite informações adicionais (opcional)..."
             />
           </div>
         </div>
-        <div className="flex flex-wrap gap-2 items-end">
-          <div className="flex-1 min-w-[220px]">
+      </Section>
+
+      {/* 2 — Produtos */}
+      <Section n={2} title="Produtos" hint="Busque, escolha a peça e adicione ao pedido.">
+        <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
+          <div className="md:col-span-4">
+            <label>Buscar produto</label>
+            <input value={productSearchTerm} onChange={(e) => setProductSearchTerm(e.target.value)} placeholder="Nome, código, marca, cor..." />
+          </div>
+          <div className="md:col-span-5">
             <label>Produto {productSearchTerm && `(${filteredProducts.length} encontrado(s))`}</label>
             <select
               value={pickProductId}
@@ -516,227 +608,297 @@ export function OrderForm({
                 </option>
               ))}
             </select>
-            {pickProduct?.photoUrl && (
-              <img src={CloudinaryService.thumb(pickProduct.photoUrl, 120)} alt="" className="mt-2 w-14 h-14 rounded object-cover border border-white/10" />
-            )}
           </div>
           {!(pickProduct?.componentNames && pickProduct.componentNames.length > 0) && (
-            <div className="w-24">
+            <div className="md:col-span-1">
               <label>Qtd.</label>
               <input type="number" min={1} value={pickQty} onChange={(e) => setPickQty(Number(e.target.value))} />
             </div>
           )}
-          <button
-            type="button"
-            className="btn-secondary"
-            onClick={addItem}
-            disabled={
-              !pickProductId ||
-              Boolean(pickProduct?.componentNames && pickProduct.componentNames.length > 0 && pickComponents.length === 0)
-            }
-          >
-            + Adicionar
-          </button>
+          <div className="md:col-span-2">
+            <button
+              type="button"
+              className="btn-secondary w-full"
+              onClick={addItem}
+              disabled={
+                !pickProductId ||
+                Boolean(pickProduct?.componentNames && pickProduct.componentNames.length > 0 && pickComponents.length === 0)
+              }
+            >
+              + Adicionar
+            </button>
+          </div>
         </div>
 
+        {pickProduct && (
+          <div className="mt-3 flex items-center gap-3 rounded-xl border border-champagne-soft/50 bg-champagne-dim/20 p-3">
+            {pickProduct.photoUrl && (
+              <img src={CloudinaryService.thumb(pickProduct.photoUrl, 120)} alt="" className="w-14 h-14 rounded-lg object-cover border border-champagne-soft/60" />
+            )}
+            <div className="text-sm">
+              <p className="font-semibold text-mist-100">{pickProduct.name}</p>
+              <p className="text-xs text-mist-500">
+                {pickProduct.internalCode} · {money(isSale ? pickProduct.saleValue : pickProduct.rentValue)}
+              </p>
+            </div>
+          </div>
+        )}
+
         {pickProduct?.componentNames && pickProduct.componentNames.length > 0 && (
-          <div className="border border-ink-600 rounded-lg p-3 space-y-2">
+          <div className="mt-3 border border-champagne-soft/50 rounded-xl p-3 space-y-2">
             <p className="text-xs font-semibold text-mist-300 uppercase tracking-wider">Componentes que serão locados *</p>
             <div className="flex flex-wrap gap-4">
               {pickProduct.componentNames.map((name) => (
-                <label key={name} className="flex items-center gap-2 text-sm text-mist-100 normal-case font-normal cursor-pointer">
+                <label key={name} className="flex items-center gap-2 text-sm text-mist-100 normal-case font-normal cursor-pointer mb-0">
                   <input type="checkbox" className="!w-auto" checked={pickComponents.includes(name)} onChange={() => toggleComponent(name)} />
                   {name}
                 </label>
               ))}
             </div>
-            <button
-              type="button"
-              className="btn-ghost !px-2 !py-1 text-xs"
-              onClick={() => setPickComponents(pickProduct.componentNames || [])}
-            >
+            <button type="button" className="btn-ghost !px-2 !py-1 text-xs" onClick={() => setPickComponents(pickProduct.componentNames || [])}>
               Selecionar conjunto completo
             </button>
           </div>
         )}
 
-        {items.length > 0 && (
-          <div className="overflow-x-auto">
-          <table className="table-shell">
-            <thead>
-              <tr>
-                <th>Produto</th>
-                <th>Componentes</th>
-                <th>Qtd.</th>
-                <th>Valor unit.</th>
-                <th>Subtotal</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((i, idx) => (
-                <tr key={`${i.productId}-${(i.components || []).join(",")}-${idx}`}>
-                  <td>
-                    {i.productName} <span className="text-mist-500 text-xs">({i.internalCode})</span>
-                  </td>
-                  <td>{i.components && i.components.length > 0 ? i.components.join(", ") : "—"}</td>
-                  <td>{i.quantity}</td>
-                  <td>{i.unitValue.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</td>
-                  <td>{(i.unitValue * i.quantity).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</td>
-                  <td>
-                    <button type="button" className="btn-ghost !px-2 !py-1 text-xs text-danger" onClick={() => removeItem(idx)}>
-                      remover
-                    </button>
-                  </td>
+        {effectiveItems.length > 0 && (
+          <div className="overflow-x-auto mt-4 rounded-xl border border-ink-600">
+            <table className="table-shell">
+              <thead>
+                <tr>
+                  <th>Produto</th>
+                  <th>Componentes</th>
+                  <th>Qtd.</th>
+                  <th>Valor unit.</th>
+                  <th>Subtotal</th>
+                  <th></th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {effectiveItems.map((i, idx) => (
+                  <tr key={`${i.productId}-${(i.components || []).join(",")}-${idx}`}>
+                    <td>
+                      {i.productName} <span className="text-mist-500 text-xs">({i.internalCode})</span>
+                      {(i.surchargeIncluded || 0) > 0 && (
+                        <span className="block text-[11px] text-champagne">inclui acréscimo de {money(i.surchargeIncluded || 0)}</span>
+                      )}
+                    </td>
+                    <td>{i.components && i.components.length > 0 ? i.components.join(", ") : "—"}</td>
+                    <td>{i.quantity}</td>
+                    <td>{money(i.unitValue)}</td>
+                    <td>{money(i.unitValue * i.quantity)}</td>
+                    <td>
+                      <button type="button" className="btn-ghost !px-2 !py-1 text-xs text-danger" onClick={() => removeItem(idx)}>
+                        remover
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
-      </div>
+      </Section>
 
-      {/* Datas */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-        <div>
-          <label>Data do pedido</label>
-          <input type="date" value={orderDate} onChange={(e) => setOrderDate(e.target.value)} />
-        </div>
-        <div>
-          <label>Data do evento</label>
-          <input type="date" value={eventDate} onChange={(e) => setEventDate(e.target.value)} />
-        </div>
-        <div>
-          <label>Data da prova</label>
-          <input type="date" value={fittingDate} onChange={(e) => setFittingDate(e.target.value)} />
-        </div>
-        <div>
-          <label>Horário da prova</label>
-          <input type="time" value={fittingTime} onChange={(e) => setFittingTime(e.target.value)} />
-        </div>
-        <div>
-          <label>Obs. da prova</label>
-          <input value={fittingNotes} onChange={(e) => setFittingNotes(e.target.value)} />
-        </div>
-        <div>
-          <label>Data da retirada</label>
-          <input
-            type="date"
-            value={pickupDate}
-            onChange={(e) => {
-              setPickupDate(e.target.value);
-              setConflictCheckDone(false);
-            }}
-          />
-        </div>
-        <div>
-          <label>Data da devolução</label>
-          <input
-            type="date"
-            value={returnDate}
-            onChange={(e) => {
-              setReturnDate(e.target.value);
-              setConflictCheckDone(false);
-            }}
-          />
-        </div>
-        <div className="flex items-end">
-          <button type="button" className="btn-secondary w-full" onClick={handleCheckConflicts} disabled={checkingConflicts}>
-            {checkingConflicts ? "Verificando..." : "Verificar disponibilidade"}
-          </button>
-        </div>
-      </div>
-
-      {conflictCheckDone && conflicts.length === 0 && (
-        <div className="card p-4 border-success/50">
-          <p className="text-success font-semibold text-sm">✓ Sem conflitos — todos os itens estão disponíveis para esse período.</p>
-        </div>
-      )}
-
-      {conflicts.length > 0 && (
-        <div className="card p-4 border-danger/50 space-y-3">
-          <p className="text-danger font-semibold text-sm">⚠ Conflito de disponibilidade encontrado</p>
-          <div className="overflow-x-auto">
-          <table className="table-shell">
-            <thead>
-              <tr>
-                <th>Produto</th>
-                <th>Componentes em conflito</th>
-                <th>Qtd. pedida</th>
-                <th>Qtd. disponível</th>
-                <th>Pedido conflitante</th>
-                <th>Cliente</th>
-                <th>Status</th>
-                <th>Retirada</th>
-                <th>Devolução</th>
-              </tr>
-            </thead>
-            <tbody>
-              {conflicts.map((c, idx) => (
-                <tr key={idx}>
-                  <td>{c.productName}</td>
-                  <td>{c.conflictingComponents?.join(", ") || "—"}</td>
-                  <td>{c.requestedQty}</td>
-                  <td className={c.availableQty < c.requestedQty ? "text-danger" : "text-success"}>{c.availableQty}</td>
-                  <td className="text-diamond">{c.conflictingOrderNumber}</td>
-                  <td>{c.conflictingClientName}</td>
-                  <td>{c.status}</td>
-                  <td>{dateBR(c.pickupDate)}</td>
-                  <td>{dateBR(c.returnDate)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      {/* 3 — Datas */}
+      <Section n={3} title="Datas e horários" hint="As datas são obrigatórias. Os horários são opcionais.">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div>
+            <label>Data do pedido</label>
+            <input type="date" value={orderDate} onChange={(e) => setOrderDate(e.target.value)} />
           </div>
           <div>
-            <label>Motivo (opcional)</label>
-            <input value={overrideReason} onChange={(e) => setOverrideReason(e.target.value)} placeholder="Explique por que está liberando mesmo com conflito" />
+            <label>Data do evento *</label>
+            <input type="date" required value={eventDate} onChange={(e) => setEventDate(e.target.value)} />
           </div>
-          <label className="flex items-center gap-2 text-sm text-mist-100 normal-case">
+          <div>
+            <label>Data da prova *</label>
+            <input type="date" required value={fittingDate} onChange={(e) => setFittingDate(e.target.value)} />
+          </div>
+          <div>
+            <label>Horário da prova (opcional)</label>
+            <input type="time" value={fittingTime} onChange={(e) => setFittingTime(e.target.value)} />
+          </div>
+
+          <div>
+            <label>Data da retirada *</label>
             <input
-              type="checkbox"
-              className="!w-auto"
-              checked={conflictsAcknowledged}
-              onChange={(e) => setConflictsAcknowledged(e.target.checked)}
+              type="date"
+              required
+              value={pickupDate}
+              onChange={(e) => {
+                setPickupDate(e.target.value);
+                setConflictCheckDone(false);
+              }}
             />
-            Liberar mesmo com conflito (fica registrado em log com meu usuário)
-          </label>
-        </div>
-      )}
+          </div>
+          <div>
+            <label>Horário da retirada (opcional)</label>
+            <input type="time" value={pickupTime} onChange={(e) => setPickupTime(e.target.value)} />
+          </div>
+          <div>
+            <label>Data da devolução {isSale ? "(não se aplica à venda)" : "*"}</label>
+            <input
+              type="date"
+              required={!isSale}
+              value={returnDate}
+              min={pickupDate || undefined}
+              onChange={(e) => {
+                setReturnDate(e.target.value);
+                setConflictCheckDone(false);
+              }}
+            />
+          </div>
+          <div>
+            <label>Horário da devolução (opcional)</label>
+            <input type="time" value={returnTime} onChange={(e) => setReturnTime(e.target.value)} />
+          </div>
 
-      {/* Financeiro */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        <div>
-          <label>Desconto (R$)</label>
-          <input type="number" step="0.01" value={discount || ""} onChange={(e) => setDiscount(Number(e.target.value))} placeholder="0" />
+          <div className="sm:col-span-2 lg:col-span-4">
+            <label>Observações da prova (opcional)</label>
+            <input value={fittingNotes} onChange={(e) => setFittingNotes(e.target.value)} />
+          </div>
         </div>
-        <div>
-          <label>Acréscimo (R$)</label>
-          <input type="number" step="0.01" value={surcharge || ""} onChange={(e) => setSurcharge(Number(e.target.value))} placeholder="0" />
-        </div>
-        <div>
-          <label>Crédito usado (R$)</label>
-          <input type="number" step="0.01" value={creditUsed || ""} onChange={(e) => setCreditUsed(Number(e.target.value))} placeholder="0" />
-          {client && <p className="text-[11px] text-mist-500 mt-1">Disponível: {client.availableCredit.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</p>}
-        </div>
-      </div>
 
-      {/* Lançamentos de pagamento — pode combinar quantas formas quiser até fechar o valor */}
-      {!isEdit && (
-        <div className="card p-4 space-y-3">
-          <p className="font-display text-lg">Pagamentos</p>
-          <div className="flex flex-wrap gap-2 items-end">
-            <div className="w-32">
-              <label>Valor (R$)</label>
-              <input
-                type="number"
-                step="0.01"
-                min={0}
-                value={pickPaymentAmount || ""}
-                onChange={(e) => setPickPaymentAmount(Number(e.target.value))}
-              />
+        <div className="mt-4 flex flex-wrap items-center gap-3">
+          <button type="button" className="btn-secondary" onClick={handleCheckConflicts} disabled={checkingConflicts}>
+            {checkingConflicts ? "Verificando..." : "Verificar disponibilidade"}
+          </button>
+          {conflictCheckDone && conflicts.length === 0 && (
+            <p className="text-success font-semibold text-sm">✓ Sem conflitos — todos os itens estão disponíveis para esse período.</p>
+          )}
+        </div>
+
+        {conflicts.length > 0 && (
+          <div className="mt-4 rounded-xl border border-danger/50 p-4 space-y-3">
+            <p className="text-danger font-semibold text-sm">⚠ Conflito de disponibilidade encontrado</p>
+            <div className="overflow-x-auto">
+              <table className="table-shell">
+                <thead>
+                  <tr>
+                    <th>Produto</th>
+                    <th>Componentes em conflito</th>
+                    <th>Qtd. pedida</th>
+                    <th>Qtd. disponível</th>
+                    <th>Pedido conflitante</th>
+                    <th>Cliente</th>
+                    <th>Status</th>
+                    <th>Retirada</th>
+                    <th>Devolução</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {conflicts.map((c, idx) => (
+                    <tr key={idx}>
+                      <td>{c.productName}</td>
+                      <td>{c.conflictingComponents?.join(", ") || "—"}</td>
+                      <td>{c.requestedQty}</td>
+                      <td className={c.availableQty < c.requestedQty ? "text-danger" : "text-success"}>{c.availableQty}</td>
+                      <td className="text-diamond">{c.conflictingOrderNumber}</td>
+                      <td>{c.conflictingClientName}</td>
+                      <td>{ORDER_STATUS_LABELS[c.status] || c.status}</td>
+                      <td>{dateBR(c.pickupDate)}</td>
+                      <td>{dateBR(c.returnDate)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
-            <div className="w-44">
+            <div>
+              <label>Motivo (opcional)</label>
+              <input value={overrideReason} onChange={(e) => setOverrideReason(e.target.value)} placeholder="Explique por que está liberando mesmo com conflito" />
+            </div>
+            <label className="flex items-center gap-2 text-sm text-mist-100 normal-case mb-0">
+              <input type="checkbox" className="!w-auto" checked={conflictsAcknowledged} onChange={(e) => setConflictsAcknowledged(e.target.checked)} />
+              Liberar mesmo com conflito (fica registrado em log com meu usuário)
+            </label>
+          </div>
+        )}
+      </Section>
+
+      {/* 4 — Valores */}
+      <Section n={4} title="Valores" hint="Desconto, acréscimo e crédito do cliente.">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label>Desconto (R$)</label>
+            <input type="number" step="0.01" min={0} value={discount || ""} onChange={(e) => setDiscount(Number(e.target.value))} placeholder="0" />
+          </div>
+          <div>
+            <label>Crédito usado (R$)</label>
+            <input type="number" step="0.01" min={0} value={creditUsed || ""} onChange={(e) => setCreditUsed(Number(e.target.value))} placeholder="0" />
+            {client && <p className="text-[11px] text-mist-500 mt-1">Disponível: {money(client.availableCredit)}</p>}
+          </div>
+        </div>
+
+        <div className="mt-4 rounded-xl border border-champagne-soft/50 p-4 space-y-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 items-end">
+            <div>
+              <label>Acréscimo (R$)</label>
+              <input type="number" step="0.01" min={0} value={surcharge || ""} onChange={(e) => setSurcharge(Number(e.target.value))} placeholder="0" />
+            </div>
+            <div className="sm:col-span-2 text-xs text-mist-500">
+              Escolha como o acréscimo será lançado: somado ao valor de uma peça (sem aparecer no contrato) ou mostrado no
+              contrato com o motivo.
+            </div>
+          </div>
+
+          {surcharge > 0 && (
+            <div className="space-y-3">
+              <label
+                className={`flex items-start gap-2 rounded-lg border p-3 normal-case font-normal text-sm cursor-pointer mb-0 ${
+                  surchargeMode === "peca" ? "border-champagne bg-champagne-dim/40" : "border-ink-600"
+                }`}
+              >
+                <input type="radio" name="surchargeMode" className="!w-auto mt-1" checked={surchargeMode === "peca"} onChange={() => setSurchargeMode("peca")} />
+                <span className="flex-1">
+                  <span className="font-semibold text-mist-100">Aplicar no valor de uma peça</span>
+                  <span className="block text-xs text-mist-500">O contrato mostra só o valor final da peça, sem citar acréscimo.</span>
+                  {surchargeMode === "peca" && (
+                    <select className="mt-2" value={surchargeItemIndex} onChange={(e) => setSurchargeItemIndex(Number(e.target.value))}>
+                      <option value={-1}>{items.length === 0 ? "Adicione uma peça ao pedido primeiro" : "Selecione a peça..."}</option>
+                      {items.map((i, idx) => (
+                        <option key={idx} value={idx}>
+                          {i.productName} ({i.internalCode}){i.components && i.components.length > 0 ? ` — ${i.components.join(", ")}` : ""}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </span>
+              </label>
+
+              <label
+                className={`flex items-start gap-2 rounded-lg border p-3 normal-case font-normal text-sm cursor-pointer mb-0 ${
+                  surchargeMode === "contrato" ? "border-champagne bg-champagne-dim/40" : "border-ink-600"
+                }`}
+              >
+                <input type="radio" name="surchargeMode" className="!w-auto mt-1" checked={surchargeMode === "contrato"} onChange={() => setSurchargeMode("contrato")} />
+                <span className="flex-1">
+                  <span className="font-semibold text-mist-100">Mostrar no contrato</span>
+                  <span className="block text-xs text-mist-500">O acréscimo aparece no contrato junto com o motivo (ex.: serviço extra).</span>
+                  {surchargeMode === "contrato" && (
+                    <input
+                      className="mt-2"
+                      value={surchargeReason}
+                      onChange={(e) => setSurchargeReason(e.target.value)}
+                      placeholder="Motivo do acréscimo (aparece no contrato)"
+                    />
+                  )}
+                </span>
+              </label>
+            </div>
+          )}
+        </div>
+      </Section>
+
+      {/* 5 — Pagamentos */}
+      {!isEdit ? (
+        <Section n={5} title="Pagamentos" hint="Combine quantas formas de pagamento precisar até completar o valor.">
+          <div className="grid grid-cols-2 md:grid-cols-12 gap-3 items-end">
+            <div className="md:col-span-3">
+              <label>Valor (R$)</label>
+              <input type="number" step="0.01" min={0} value={pickPaymentAmount || ""} onChange={(e) => setPickPaymentAmount(Number(e.target.value))} />
+            </div>
+            <div className="md:col-span-3">
               <label>Forma de pagamento</label>
               <select value={pickPaymentMethod} onChange={(e) => setPickPaymentMethod(e.target.value as PaymentMethod)}>
                 {Object.entries(PAYMENT_METHOD_LABELS).map(([k, v]) => (
@@ -747,13 +909,13 @@ export function OrderForm({
               </select>
             </div>
             {(pickPaymentMethod === "credito" || pickPaymentMethod === "debito") && (
-              <div className="w-40">
+              <div className="md:col-span-2">
                 <label>Bandeira</label>
-                <input value={pickCardBrand} onChange={(e) => setPickCardBrand(e.target.value)} placeholder="Ex: Visa" />
+                <input value={pickCardBrand} onChange={(e) => setPickCardBrand(e.target.value)} placeholder="Bandeira do cartão" />
               </div>
             )}
             {pickPaymentMethod === "credito" && (
-              <div className="w-32">
+              <div className="md:col-span-2">
                 <label>Parcelas</label>
                 <select value={pickInstallments} onChange={(e) => setPickInstallments(Number(e.target.value))}>
                   {Array.from({ length: 12 }, (_, i) => i + 1).map((n) => (
@@ -764,83 +926,114 @@ export function OrderForm({
                 </select>
               </div>
             )}
-            <button type="button" className="btn-secondary" onClick={addPayment} disabled={pickPaymentAmount <= 0}>
-              + Lançar pagamento
-            </button>
+            <div className="col-span-2 md:col-span-2">
+              <button type="button" className="btn-secondary w-full" onClick={addPayment} disabled={pickPaymentAmount <= 0}>
+                + Lançar
+              </button>
+            </div>
           </div>
 
           {payments.length > 0 && (
-            <div className="overflow-x-auto">
-            <table className="table-shell">
-              <thead>
-                <tr>
-                  <th>Forma</th>
-                  <th>Bandeira</th>
-                  <th>Parcelas</th>
-                  <th>Valor</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
-                {payments.map((p, idx) => (
-                  <tr key={idx}>
-                    <td>{PAYMENT_METHOD_LABELS[p.method]}</td>
-                    <td>{p.cardBrand || "—"}</td>
-                    <td>{p.installments ? `${p.installments}x` : "—"}</td>
-                    <td>{p.amount.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</td>
-                    <td>
-                      <button type="button" className="btn-ghost !px-2 !py-1 text-xs text-danger" onClick={() => removePayment(idx)}>
-                        remover
-                      </button>
-                    </td>
+            <div className="overflow-x-auto mt-4 rounded-xl border border-ink-600">
+              <table className="table-shell">
+                <thead>
+                  <tr>
+                    <th>Forma</th>
+                    <th>Bandeira</th>
+                    <th>Parcelas</th>
+                    <th>Valor</th>
+                    <th></th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {payments.map((p, idx) => (
+                    <tr key={idx}>
+                      <td>{PAYMENT_METHOD_LABELS[p.method]}</td>
+                      <td>{p.cardBrand || "—"}</td>
+                      <td>{p.installments ? `${p.installments}x` : "—"}</td>
+                      <td>{money(p.amount)}</td>
+                      <td>
+                        <button type="button" className="btn-ghost !px-2 !py-1 text-xs text-danger" onClick={() => removePayment(idx)}>
+                          remover
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           )}
-          <p className="text-xs text-mist-500">
-            Combine quantas formas de pagamento precisar (dinheiro + pix + cartão, por exemplo) até completar o valor.
-            Cada lançamento vira um registro de pagamento de verdade assim que o pedido for salvo.
-          </p>
-        </div>
-      )}
-      {isEdit && (
-        <p className="text-xs text-mist-500">
-          Pagamentos são gerenciados separadamente — use "Pagamentos" no menu do pedido para lançar ou excluir um
-          recebimento. Editar aqui não altera o valor já pago.
+          <p className="text-xs text-mist-500 mt-3">Cada lançamento vira um registro de pagamento de verdade assim que o pedido for salvo.</p>
+        </Section>
+      ) : (
+        <p className="text-xs text-mist-500 px-1">
+          Pagamentos são gerenciados separadamente — use "Pagamentos" no menu do pedido para lançar ou excluir um recebimento.
+          Editar aqui não altera o valor já pago.
         </p>
       )}
 
-      <div className="grid grid-cols-3 gap-4 card p-4">
-        <div>
-          <p className="text-xs text-mist-500">Valor total</p>
-          <p className="text-xl font-display">{totals.totalValue.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</p>
-        </div>
-        <div>
-          <p className="text-xs text-mist-500">Valor pago</p>
-          <p className="text-xl font-display text-success">{totalPaidSoFar.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</p>
-        </div>
-        <div>
-          <p className="text-xs text-mist-500">Valor em aberto</p>
-          <p className="text-xl font-display text-warn">{totals.openValue.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</p>
+      {/* Resumo */}
+      <div className="card p-5 border-champagne-soft/60">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div>
+            <p className="text-xs uppercase tracking-wider text-mist-500">Valor dos produtos</p>
+            <p className="text-lg font-display">{money(totals.totalValue)}</p>
+          </div>
+          <div>
+            <p className="text-xs uppercase tracking-wider text-mist-500">Total do pedido</p>
+            <p className="text-lg font-display">{money(netTotal)}</p>
+          </div>
+          <div>
+            <p className="text-xs uppercase tracking-wider text-mist-500">Valor pago</p>
+            <p className="text-lg font-display text-success">{money(totalPaidSoFar)}</p>
+          </div>
+          <div>
+            <p className="text-xs uppercase tracking-wider text-mist-500">Valor em aberto</p>
+            <p className="text-lg font-display text-warn">{money(totals.openValue)}</p>
+          </div>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div>
-          <label>Detalhes do pedido (aparece no contrato)</label>
-          <textarea rows={3} value={orderDetails} onChange={(e) => setOrderDetails(e.target.value)} />
+      {/* 6 — Observações e nota fiscal */}
+      <Section n={6} title="Observações e nota fiscal">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label>Detalhes do pedido (aparece no contrato)</label>
+            <textarea rows={3} value={orderDetails} onChange={(e) => setOrderDetails(e.target.value)} />
+          </div>
+          <div>
+            <label>Observações internas (não aparece no contrato)</label>
+            <textarea rows={3} value={internalNotes} onChange={(e) => setInternalNotes(e.target.value)} />
+          </div>
         </div>
-        <div>
-          <label>Observações internas (não aparece no contrato)</label>
-          <textarea rows={3} value={internalNotes} onChange={(e) => setInternalNotes(e.target.value)} />
+        <div className="mt-4 pt-4 border-t border-ink-600/70">
+          <p className="text-sm font-semibold text-mist-100 mb-2">Nota fiscal</p>
+          <div className="flex flex-wrap gap-2">
+            {[
+              [true, "Emitir nota fiscal para este pedido"],
+              [false, "Não emitir"],
+            ].map(([val, label]) => (
+              <label
+                key={String(val)}
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-full border text-sm normal-case font-medium cursor-pointer mb-0 ${
+                  willIssueInvoice === val ? "border-champagne bg-champagne-dim/60 text-mist-100" : "border-champagne-soft/50 text-mist-300"
+                }`}
+              >
+                <input type="radio" name="willIssueInvoice" className="!w-auto" checked={willIssueInvoice === val} onChange={() => setWillIssueInvoice(val as boolean)} />
+                {label as string}
+              </label>
+            ))}
+          </div>
+          <p className="text-[11px] text-mist-500 mt-2">
+            Isso só marca a intenção, para você acompanhar em "Notas Fiscais" no menu — a emissão em si continua sendo feita
+            no seu emissor fiscal de costume.
+          </p>
         </div>
-      </div>
+      </Section>
 
       {errorMsg && <div className="text-sm text-danger bg-danger/10 border border-danger/30 rounded-lg px-3 py-2">{errorMsg}</div>}
 
-      <div className="flex justify-end gap-2">
+      <div className="flex justify-end gap-2 pb-2">
         <button type="button" className="btn-secondary" onClick={onCancel}>
           Cancelar
         </button>
@@ -849,5 +1042,23 @@ export function OrderForm({
         </button>
       </div>
     </form>
+  );
+}
+
+/** Cartão de seção da tela de pedido: número dourado, título e subtítulo. */
+function Section({ n, title, hint, children }: { n: number; title: string; hint?: string; children: React.ReactNode }) {
+  return (
+    <section className="card p-5 border-champagne-soft/50">
+      <header className="flex items-center gap-3 mb-4">
+        <span className="w-8 h-8 shrink-0 rounded-full border border-champagne-soft text-champagne text-sm font-semibold flex items-center justify-center bg-champagne-dim/30">
+          {n}
+        </span>
+        <div className="min-w-0">
+          <h2 className="font-display text-lg leading-tight text-mist-100">{title}</h2>
+          {hint && <p className="text-xs text-mist-500">{hint}</p>}
+        </div>
+      </header>
+      {children}
+    </section>
   );
 }

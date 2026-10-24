@@ -4,7 +4,7 @@ import { InvoiceService } from "../../services/InvoiceService";
 import { Invoice, InvoiceStatus, INVOICE_STATUS_LABELS } from "../../types";
 import { Modal } from "../../components/Modal";
 import { useAuth } from "../../hooks/useAuth";
-import { dateBR } from "../../utils/dates";
+import { dateBR, todayYMD } from "../../utils/dates";
 
 function money(v: number) {
   return (v || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -24,7 +24,7 @@ export default function InvoicesPage() {
   const [statusFilter, setStatusFilter] = useState<InvoiceStatus | "todos">("todos");
   const [issueTarget, setIssueTarget] = useState<Invoice | null>(null);
   const [invoiceNumber, setInvoiceNumber] = useState("");
-  const [issueDate, setIssueDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [issueDate, setIssueDate] = useState(() => todayYMD());
 
   useEffect(() => InvoiceService.subscribeAll(setInvoices), []);
 
@@ -45,7 +45,7 @@ export default function InvoicesPage() {
   function openIssueModal(inv: Invoice) {
     setIssueTarget(inv);
     setInvoiceNumber(inv.invoiceNumber || "");
-    setIssueDate(inv.issueDate || new Date().toISOString().slice(0, 10));
+    setIssueDate(inv.issueDate || todayYMD());
   }
 
   async function handleMarkIssued(e: React.FormEvent) {
@@ -175,7 +175,7 @@ export default function InvoicesPage() {
           <form onSubmit={handleMarkIssued} className="space-y-4">
             <div>
               <label>Número da nota fiscal</label>
-              <input required value={invoiceNumber} onChange={(e) => setInvoiceNumber(e.target.value)} placeholder="Ex: 000123" />
+              <input required value={invoiceNumber} onChange={(e) => setInvoiceNumber(e.target.value)} placeholder="Número da nota fiscal" />
             </div>
             <div>
               <label>Data de emissão</label>

@@ -4,11 +4,13 @@ import {
   deleteDoc,
   doc,
   getDoc,
+  getDocs,
   onSnapshot,
   orderBy,
   query,
   serverTimestamp,
   updateDoc,
+  where,
 } from "firebase/firestore";
 import { db } from "../firebase/firebaseConfig";
 import { Product, ProductStatus } from "../types";
@@ -75,6 +77,14 @@ export const ProductService = {
   },
 
   async remove(id: string) {
+    // Não deixa excluir um produto que ainda está em pedido em andamento.
+    const snap = await getDocs(
+      query(collection(db, "orders"), where("status", "in", ["orcamento", "confirmado", "em_prova", "ajuste_andamento", "pronto_retirada", "retirado"]))
+    );
+    const inUse = snap.docs.some((d) => ((d.data() as any).items || []).some((i: any) => i.productId === id));
+    if (inUse) {
+      throw new Error("Este produto está em um pedido em andamento e não pode ser excluído agora.");
+    }
     await deleteDoc(doc(db, "products", id));
   },
 
