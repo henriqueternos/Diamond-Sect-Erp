@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { OrderService } from "../../services/OrderService";
 import { ProductService } from "../../services/ProductService";
-import { openPrintWindow } from "../../services/DocumentService";
+import { openPrintWindow, buildMeasuresHtml, downloadMeasuresPdf } from "../../services/DocumentService";
 import { exportTablePdf, ExportColumn } from "../../services/ExportService";
 import { Order, Product, PRODUCT_STATUS_LABELS } from "../../types";
 
@@ -141,6 +141,22 @@ export default function PickingList() {
     openPrintWindow(html, "Lista de separação");
   }
 
+  // Pedidos (e peças) que aparecem na lista filtrada — usados para imprimir/exportar só as medidas.
+  function ordersForMeasures(): Order[] {
+    const shown = new Set(rows.map((r) => `${r.orderNumber}|${r.productCode}`));
+    return orders
+      .filter((o) => o.status !== "cancelado")
+      .map((o) => ({ ...o, items: o.items.filter((i) => shown.has(`${o.orderNumber}|${i.internalCode}`)) }))
+      .filter((o) => o.items.some((i) => i.measures && i.measures.length > 0))
+      .sort((a, b) => ((a.pickupDate || a.eventDate || "") > (b.pickupDate || b.eventDate || "") ? 1 : -1));
+  }
+  function handlePrintMeasures() {
+    openPrintWindow(buildMeasuresHtml(ordersForMeasures()), "Medidas dos pedidos");
+  }
+  function handleExportMeasures() {
+    downloadMeasuresPdf(ordersForMeasures(), `medidas-${Date.now()}.pdf`);
+  }
+
   function handleExportPdf() {
     exportTablePdf("Lista de separação — Diamond Sect", columns, exportRows(), `lista-separacao-${Date.now()}.pdf`, [
       `${rows.length} item(ns) no período selecionado`,
@@ -242,6 +258,12 @@ export default function PickingList() {
         </button>
         <button className="btn-secondary" onClick={handleExportPdf}>
           Exportar PDF
+        </button>
+        <button className="btn-secondary" onClick={handlePrintMeasures} title="Imprime só as medidas dos itens filtrados">
+          Imprimir medidas
+        </button>
+        <button className="btn-secondary" onClick={handleExportMeasures} title="PDF só com as medidas dos itens filtrados">
+          Exportar medidas (PDF)
         </button>
       </div>
 

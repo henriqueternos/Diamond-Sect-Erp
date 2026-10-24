@@ -1,4 +1,5 @@
 import jsPDF from "jspdf";
+import { measureRows, itemsWithMeasures } from "../utils/measures";
 import { CompanySettings, DocumentSettings, Order, PAYMENT_METHOD_LABELS, CLIENT_CATEGORY_LABELS, ORDER_STATUS_LABELS } from "../types";
 
 /** Escapa texto digitado pelo usuário antes de colocar no HTML do documento
@@ -48,6 +49,10 @@ const BASE_STYLE = `
   .sign div { flex: 1; text-align: center; }
   .sign .line { border-top: 1px solid #333; margin-top: 50px; padding-top: 6px; font-size: 12px; }
   .footer { margin-top: 40px; font-size: 10.5px; color: #777; text-align: center; }
+  .mcard { border: 1px solid #bbb; border-radius: 6px; padding: 10px 14px; margin: 14px 0; page-break-inside: avoid; }
+  .mcard h3 { margin: 0 0 4px; font-size: 14px; }
+  .mcard .meta { font-size: 12px; color: #444; margin-bottom: 6px; line-height: 1.5; }
+  .mcard table td:first-child { width: 48%; font-weight: bold; }
   @media print { body { padding: 0; } }
 `;
 
@@ -217,6 +222,67 @@ export function buildInternalOrderHtml(order: Order) {
   `;
 }
 
+
+/** ---------------- MEDIDAS (uso interno — nunca vão no contrato) ---------------- */
+
+function whenBR(date?: string, time?: string) {
+  return `${dateBR(date)}${time ? ` às ${time}` : ""}`;
+}
+
+/** Cartões de medidas, um por peça/unidade, com cliente e datas do pedido. */
+export function buildMeasuresHtml(orders: Order[]) {
+  const cards = orders.flatMap((o) =>
+    itemsWithMeasures(o.items).flatMap((it) =>
+      (it.measures || []).map((m, idx, arr) => {
+        const rows = measureRows(it.measureKind!, m);
+        return `
+        <div class="mcard" style="border:1px solid #bbb;border-radius:6px;padding:10px 14px;margin:14px 0;page-break-inside:avoid;">
+          <h3 style="margin:0 0 4px;font-size:14px;">${esc(it.productName)} <span style="font-weight:normal;color:#666">(${esc(it.internalCode)})${
+            it.components && it.components.length > 0 ? ` — ${esc(it.components.join(", "))}` : ""
+          }${arr.length > 1 ? ` — unidade ${idx + 1} de ${arr.length}` : ""}</span></h3>
+          <div class="meta" style="font-size:12px;color:#444;margin-bottom:6px;line-height:1.5;">
+            <b>Cliente:</b> ${esc(o.clientName)} · <b>Pedido:</b> ${esc(o.orderNumber)}<br/>
+            <b>Evento:</b> ${dateBR(o.eventDate)} · <b>Prova:</b> ${whenBR(o.fittingDate, o.fittingTime)} ·
+            <b>Retirada:</b> ${whenBR(o.pickupDate, o.pickupTime)} · <b>Devolução:</b> ${whenBR(o.returnDate, o.returnTime)}
+          </div>
+          <table style="width:100%;border-collapse:collapse;font-size:13px;"><tbody>${rows.map((r) => `<tr><td style="width:48%;font-weight:bold;padding:4px 6px;border-bottom:1px solid #eee;">${esc(r.label)}</td><td style="padding:4px 6px;border-bottom:1px solid #eee;">${esc(r.value)}</td></tr>`).join("")}</tbody></table>
+        </div>`;
+      })
+    )
+  );
+  return `
+    <h1>MEDIDAS DOS PEDIDOS</h1>
+    <p class="subtitle">Uso interno da loja · não enviar ao cliente</p>
+    ${cards.length > 0 ? cards.join("") : '<p class="clause">Nenhuma medida registrada para o(s) pedido(s) selecionado(s).</p>'}
+  `;
+}
+
+export function downloadMeasuresPdf(orders: Order[], fileName: string) {
+  const c = pdfComposer("Medidas");
+  c.h1("MEDIDAS DOS PEDIDOS");
+  c.subtitle("Uso interno da loja · não enviar ao cliente");
+  let count = 0;
+  orders.forEach((o) =>
+    itemsWithMeasures(o.items).forEach((it) =>
+      (it.measures || []).forEach((m, idx, arr) => {
+        count++;
+        const comps = it.components && it.components.length > 0 ? ` — ${it.components.join(", ")}` : "";
+        c.h2(`${it.productName} (${it.internalCode})${comps}${arr.length > 1 ? ` — unidade ${idx + 1}/${arr.length}` : ""}`);
+        c.row("Cliente", o.clientName);
+        c.row("Pedido", o.orderNumber);
+        c.row("Evento", dateBR(o.eventDate));
+        c.row("Prova", whenBR(o.fittingDate, o.fittingTime));
+        c.row("Retirada", whenBR(o.pickupDate, o.pickupTime));
+        c.row("Devolução", whenBR(o.returnDate, o.returnTime));
+        measureRows(it.measureKind!, m).forEach((r) => c.row(r.label, r.value));
+        c.space(10);
+      })
+    )
+  );
+  if (count === 0) c.paragraph("Nenhuma medida registrada para o(s) pedido(s) selecionado(s).");
+  c.doc.save(fileName);
+}
+
 export function openPrintWindow(bodyHtml: string, documentTitle: string) {
   const win = window.open("", "_blank", "width=900,height=1000");
   if (!win) {
@@ -268,11 +334,12 @@ function pdfComposer(_title: string) {
     y += 22;
   }
   function h2(text: string) {
-    ensureSpace(2, 18);
     doc.setFont("times", "bold");
     doc.setFontSize(11.5);
-    doc.text(text.toUpperCase(), marginX, y);
-    y += 6;
+    const titleLines: string[] = doc.splitTextToSize(text.toUpperCase(), pageWidth - marginX * 2);
+    ensureSpace(titleLines.length + 1, 15);
+    doc.text(titleLines, marginX, y);
+    y += (titleLines.length - 1) * 14 + 6;
     doc.setDrawColor(200);
     doc.line(marginX, y, pageWidth - marginX, y);
     y += 16;
@@ -327,6 +394,9 @@ function pdfComposer(_title: string) {
     });
     y += 6;
   }
+  function space(n: number) {
+    y += n;
+  }
   function signatures(clientLabel: string, companyLabel: string) {
     ensureSpace(6, 14);
     y += 40;
@@ -356,6 +426,7 @@ function pdfComposer(_title: string) {
     row,
     paragraph,
     tableItems,
+    space,
     signatures,
     footer,
   };
@@ -451,7 +522,7 @@ export function downloadWithdrawalPdf(order: Order, company: CompanySettings, se
 /** ---------------- E-mail (mailto — funciona sem backend nem conta externa) ---------------- */
 
 export function buildContractMailto(order: Order, clientEmail: string | undefined) {
-  const subject = encodeURIComponent(`Contrato — Pedido ${esc(order.orderNumber)} — Diamond Sect`);
+  const subject = encodeURIComponent(`Contrato — Pedido ${order.orderNumber} — Diamond Sect`);
   const body = encodeURIComponent(
     `Olá ${esc(order.clientName)},\n\n` +
       `Segue o resumo do seu contrato referente ao pedido ${esc(order.orderNumber)}:\n\n` +

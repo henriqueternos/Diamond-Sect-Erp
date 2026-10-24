@@ -210,7 +210,16 @@ export interface OrderItem {
    * `unitValue` já inclui esse acréscimo; `baseUnitValue` é o preço original. */
   baseUnitValue?: number;
   surchargeIncluded?: number;
+  /** Medidas da peça (terno/blazer ou vestido). Uso interno: NÃO aparecem no
+   * contrato. Uma entrada por unidade do item (índice 0 = 1ª unidade). */
+  measureKind?: MeasureKind;
+  measures?: MeasureValues[];
 }
+
+/** Tipo de peça que exige medidas no pedido. */
+export type MeasureKind = "terno" | "vestido";
+/** Valores digitados (texto), indexados pelas chaves de utils/measures.ts. */
+export type MeasureValues = Record<string, string>;
 
 /** Como o acréscimo do pedido foi lançado:
  * - "peca": somado ao valor de uma peça — o contrato NÃO mostra acréscimo;

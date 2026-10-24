@@ -1261,3 +1261,10 @@ Firebase (ver `firestore.rules` e o guia de ativação em PDF).
 - Datas obrigatórias no novo pedido: evento, prova, retirada e devolução (venda não exige devolução). Horários de prova, retirada e devolução são opcionais e aparecem no contrato.
 - Tela de novo pedido reorganizada em seções numeradas (Cliente, Produtos, Datas, Valores, Pagamentos, Observações).
 - Botões e ícones com contorno dourado fino.
+
+## Medidas por peça (pedido)
+- Ao adicionar terno/blazer ou vestido ao pedido, aparece a seção **Medidas das peças** (uma por peça/unidade, obrigatória).
+- Detecção pelo texto de tipo/categoria/subcategoria/nome ("vestido"; "terno", "blazer", "paletó", "smoking"...). Produtos com componentes só pedem o que foi locado (Paletó → punho; Calça → calça).
+- Blazer avulso (sem "terno") não pede medidas de calça.
+- Não aparecem no contrato; ficam no resumo do pedido, e podem ser impressas/exportadas (menu ⋯ do pedido e Lista de separação).
+- Código: `src/utils/measures.ts`, `MeasureCard` em `OrderForm.tsx`, `buildMeasuresHtml`/`downloadMeasuresPdf` em `DocumentService.ts`.

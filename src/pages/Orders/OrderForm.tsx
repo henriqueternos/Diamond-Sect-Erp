@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Client, Order, OrderItem, OrderType, PaymentMethod, PAYMENT_METHOD_LABELS, Product, ClientCategory, CLIENT_CATEGORY_LABELS, ORDER_STATUS_LABELS, SurchargeMode } from "../../types";
+import { Client, Order, OrderItem, OrderType, PaymentMethod, PAYMENT_METHOD_LABELS, Product, ClientCategory, CLIENT_CATEGORY_LABELS, ORDER_STATUS_LABELS, SurchargeMode, MeasureValues } from "../../types";
 import { ClientService } from "../../services/ClientService";
 import { CloudinaryService } from "../../services/CloudinaryService";
 import { ProductService } from "../../services/ProductService";
@@ -9,6 +9,7 @@ import { CustomerCreditService } from "../../services/CustomerCreditService";
 import { InvoiceService } from "../../services/InvoiceService";
 import { dateBR, todayYMD } from "../../utils/dates";
 import { effectiveItemComponents } from "../../utils/components";
+import { measureSpecFor, missingMeasures, cleanMeasures, MeasureSpec } from "../../utils/measures";
 import { useAuth } from "../../hooks/useAuth";
 
 export function OrderForm({
@@ -111,21 +112,50 @@ export function OrderForm({
   const effectiveItems: OrderItem[] = useMemo(
     () =>
       items.map((it, idx) => {
-        const { surchargeIncluded: _a, baseUnitValue: _b, ...rest } = it;
+        const { surchargeIncluded: _a, baseUnitValue: _b, measureKind: _k, measures: _m, ...rest } = it;
+        const qty = it.quantity || 1;
+        // Medidas: só vão no pedido as que se aplicam à peça (e só as respostas que fazem sentido).
+        const product = products.find((p) => p.id === it.productId);
+        const spec = measureSpecFor(product, it);
+        const measureFields: Partial<OrderItem> = spec
+          ? { measureKind: spec.kind, measures: Array.from({ length: qty }, (_, u) => cleanMeasures(spec, it.measures?.[u] || {})) }
+          : !product && it.measureKind
+          ? { measureKind: it.measureKind, measures: it.measures } // produto ainda não carregou: não perde o que já estava salvo
+          : {};
         if (surchargeMode === "peca" && surcharge > 0 && idx === surchargeItemIndex) {
-          const qty = it.quantity || 1;
           const perUnit = Math.round((surcharge / qty) * 100) / 100;
           return {
             ...rest,
+            ...measureFields,
             unitValue: Math.round((rest.unitValue + perUnit) * 100) / 100,
             baseUnitValue: rest.unitValue,
             surchargeIncluded: Math.round(perUnit * qty * 100) / 100,
           };
         }
-        return rest;
+        return { ...rest, ...measureFields };
       }),
-    [items, surchargeMode, surcharge, surchargeItemIndex]
+    [items, products, surchargeMode, surcharge, surchargeItemIndex]
   );
+  // Peças que pedem medidas (uma entrada por linha do pedido; null = não pede).
+  const specs: (MeasureSpec | null)[] = useMemo(
+    () => items.map((it) => measureSpecFor(products.find((p) => p.id === it.productId), it)),
+    [items, products]
+  );
+  const hasMeasures = specs.some(Boolean);
+  const off = hasMeasures ? 1 : 0; // deslocamento da numeração das seções seguintes
+
+  function setMeasure(idx: number, unit: number, key: string, value: string) {
+    setItems((prev) =>
+      prev.map((it, i) => {
+        if (i !== idx) return it;
+        const arr: MeasureValues[] = [...(it.measures || [])];
+        while (arr.length <= unit) arr.push({});
+        arr[unit] = { ...arr[unit], [key]: value };
+        return { ...it, measures: arr };
+      })
+    );
+  }
+
   // Só o acréscimo "do contrato" entra no campo surcharge do pedido.
   const effectiveSurcharge = surchargeMode === "contrato" ? surcharge : 0;
   const totals = useMemo(
@@ -293,6 +323,25 @@ export function OrderForm({
     if (returnDate && pickupDate && returnDate < pickupDate) {
       setErrorMsg("A data da devolução não pode ser anterior à data da retirada.");
       return;
+    }
+    // Medidas obrigatórias (pedidos antigos sem nenhuma medida não são bloqueados ao editar).
+    const legacyNoMeasures = isEdit && !(existingOrder!.items || []).some((i) => i.measures && i.measures.length > 0);
+    if (!legacyNoMeasures) {
+      const problems: string[] = [];
+      items.forEach((it, idx) => {
+        const spec = specs[idx];
+        if (!spec) return;
+        for (let u = 0; u < (it.quantity || 1); u++) {
+          const miss = missingMeasures(spec, it.measures?.[u] || {});
+          if (miss.length > 0) {
+            problems.push(`${it.productName}${(it.quantity || 1) > 1 ? ` (unidade ${u + 1})` : ""}: ${miss.join(", ")}`);
+          }
+        }
+      });
+      if (problems.length > 0) {
+        setErrorMsg(`Preencha as medidas obrigatórias — ${problems.join(" | ")}.`);
+        return;
+      }
     }
     if (surcharge > 0) {
       if (surchargeMode === "peca" && !(surchargeItemIndex >= 0 && surchargeItemIndex < items.length)) {
@@ -816,8 +865,34 @@ export function OrderForm({
         )}
       </Section>
 
-      {/* 4 — Valores */}
-      <Section n={4} title="Valores" hint="Desconto, acréscimo e crédito do cliente.">
+      {/* 4 — Medidas (só aparece quando há terno/blazer ou vestido) */}
+      {hasMeasures && (
+        <Section n={4} title="Medidas das peças" hint="Preenchimento obrigatório. Ficam só no resumo do pedido — não aparecem no contrato.">
+          <div className="space-y-4">
+            {items.map((it, idx) => {
+              const spec = specs[idx];
+              if (!spec) return null;
+              return Array.from({ length: it.quantity || 1 }, (_, u) => (
+                <div key={`${it.productId}-${(it.components || []).join(",")}-${idx}-${u}`}>
+                <MeasureCard
+                  item={it}
+                  spec={spec}
+                  unit={u}
+                  unitCount={it.quantity || 1}
+                  values={it.measures?.[u] || {}}
+                  clientName={client?.fullName}
+                  dates={{ eventDate, fittingDate, pickupDate, returnDate }}
+                  onChange={(key, val) => setMeasure(idx, u, key, val)}
+                />
+                </div>
+              ));
+            })}
+          </div>
+        </Section>
+      )}
+
+      {/* 5 — Valores */}
+      <Section n={4 + off} title="Valores" hint="Desconto, acréscimo e crédito do cliente.">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label>Desconto (R$)</label>
@@ -892,7 +967,7 @@ export function OrderForm({
 
       {/* 5 — Pagamentos */}
       {!isEdit ? (
-        <Section n={5} title="Pagamentos" hint="Combine quantas formas de pagamento precisar até completar o valor.">
+        <Section n={5 + off} title="Pagamentos" hint="Combine quantas formas de pagamento precisar até completar o valor.">
           <div className="grid grid-cols-2 md:grid-cols-12 gap-3 items-end">
             <div className="md:col-span-3">
               <label>Valor (R$)</label>
@@ -995,7 +1070,7 @@ export function OrderForm({
       </div>
 
       {/* 6 — Observações e nota fiscal */}
-      <Section n={6} title="Observações e nota fiscal">
+      <Section n={6 + off} title="Observações e nota fiscal">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <label>Detalhes do pedido (aparece no contrato)</label>
@@ -1060,5 +1135,193 @@ function Section({ n, title, hint, children }: { n: number; title: string; hint?
       </header>
       {children}
     </section>
+  );
+}
+
+const inputCls = "w-full";
+
+function MeasureCard({
+  item,
+  spec,
+  unit,
+  unitCount,
+  values,
+  clientName,
+  dates,
+  onChange,
+}: {
+  item: OrderItem;
+  spec: MeasureSpec;
+  unit: number;
+  unitCount: number;
+  values: MeasureValues;
+  clientName?: string;
+  dates: { eventDate: string; fittingDate: string; pickupDate: string; returnDate: string };
+  onChange: (key: string, value: string) => void;
+}) {
+  const missing = missingMeasures(spec, values).length;
+  const v = (k: string) => values[k] || "";
+
+  const num = (k: string, label: string) => (
+    <div>
+      <label>{label} *</label>
+      <div className="relative">
+        <input
+          className={`${inputCls} pr-10`}
+          inputMode="decimal"
+          value={v(k)}
+          onChange={(e) => onChange(k, e.target.value.replace(/[^0-9.,]/g, ""))}
+          placeholder="0"
+        />
+        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-mist-500 pointer-events-none">cm</span>
+      </div>
+    </div>
+  );
+
+  const choice = (k: string, label: string, options: { value: string; label: string }[]) => (
+    <div>
+      <label>{label} *</label>
+      <div className="flex flex-wrap gap-2">
+        {options.map((o) => (
+          <button
+            key={o.value}
+            type="button"
+            className={`${v(k) === o.value ? "btn-primary" : "btn-secondary"} !px-4 !py-1.5 text-sm`}
+            onClick={() => onChange(k, o.value)}
+          >
+            {o.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+
+  const yesNo = [
+    { value: "sim", label: "Sim" },
+    { value: "nao", label: "Não" },
+  ];
+
+  return (
+    <div className="rounded-xl border border-champagne-soft/60 overflow-hidden">
+      <div className="bg-champagne-dim/30 px-4 py-3 border-b border-champagne-soft/50">
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <div className="min-w-0">
+            <p className="font-semibold text-mist-100">
+              {item.productName} <span className="text-mist-500 text-xs font-normal">({item.internalCode})</span>
+              {unitCount > 1 && <span className="ml-2 text-xs text-champagne">unidade {unit + 1} de {unitCount}</span>}
+            </p>
+            {item.components && item.components.length > 0 && <p className="text-xs text-mist-500">{item.components.join(" · ")}</p>}
+          </div>
+          <span
+            className={`text-[11px] px-2 py-0.5 rounded-full border ${
+              missing === 0 ? "border-success/40 text-success bg-success/10" : "border-champagne-soft text-champagne"
+            }`}
+          >
+            {missing === 0 ? "Completo" : `Faltam ${missing} campo(s)`}
+          </span>
+        </div>
+        <p className="text-xs text-mist-300 mt-1">
+          <b>Cliente:</b> {clientName || "—"} · <b>Evento:</b> {dateBR(dates.eventDate)} · <b>Prova:</b> {dateBR(dates.fittingDate)} ·{" "}
+          <b>Retirada:</b> {dateBR(dates.pickupDate)} · <b>Devolução:</b> {dateBR(dates.returnDate)}
+        </p>
+      </div>
+
+      <div className="p-4 space-y-4">
+        {spec.kind === "terno" && (
+          <>
+            {(spec.jacket || spec.pants) && (
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                {spec.jacket && num("punho", "Altura total do punho")}
+                {spec.pants && num("calcaAltura", "Altura total da calça")}
+                {spec.pants && num("calcaCintura", "Cintura total da calça")}
+              </div>
+            )}
+            {spec.jacket && (
+              <div className="space-y-2">
+                {choice("backAdjust", "Haverá ajustes na parte de trás do terno?", yesNo)}
+                {v("backAdjust") === "sim" && (
+                  <div>
+                    <label>Descreva o ajuste (parte de trás) *</label>
+                    <input value={v("backAdjustNote")} onChange={(e) => onChange("backAdjustNote", e.target.value)} placeholder="Ex.: diminuir 2 cm nas costas" />
+                  </div>
+                )}
+              </div>
+            )}
+            {spec.pants && (
+              <div className="space-y-2">
+                {choice("legAdjust", "Haverá ajustes nas laterais da perna da calça?", yesNo)}
+                {v("legAdjust") === "sim" && (
+                  <div>
+                    <label>Descreva o ajuste (laterais da perna) *</label>
+                    <input value={v("legAdjustNote")} onChange={(e) => onChange("legAdjustNote", e.target.value)} placeholder="Ex.: afinar 1,5 cm de cada lado" />
+                  </div>
+                )}
+              </div>
+            )}
+          </>
+        )}
+
+        {spec.kind === "vestido" && (
+          <>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+              {num("busto", "Busto")}
+              {num("abaixoBusto", "Abaixo do busto")}
+              {num("cintura", "Cintura")}
+              {num("quadril", "Quadril")}
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {num("saiaFrente", "Altura da saia — parte da frente")}
+              {num("saiaCostas", "Altura da saia — parte das costas")}
+            </div>
+            <div className="space-y-3">
+              {choice("strapAdjust", "Haverá ajuste na alça?", yesNo)}
+              {v("strapAdjust") === "sim" && (
+                <div className="rounded-lg border border-ink-600 p-3 space-y-3">
+                  {choice("strapSide", "Qual alça?", [
+                      { value: "direita", label: "Direita" },
+                      { value: "esquerda", label: "Esquerda" },
+                      { value: "ambas", label: "Ambas" },
+                    ])}
+                  {v("strapSide") === "direita" && (
+                    <div className="max-w-[200px]">
+                      {num("strapRight", "Ajuste da alça direita")}
+                    </div>
+                  )}
+                  {v("strapSide") === "esquerda" && (
+                    <div className="max-w-[200px]">
+                      {num("strapLeft", "Ajuste da alça esquerda")}
+                    </div>
+                  )}
+                  {v("strapSide") === "ambas" && (
+                    <>
+                      {choice("strapMode", "As duas alças terão…", [
+                          { value: "igual", label: "A mesma medida" },
+                          { value: "diferente", label: "Medidas diferentes" },
+                        ])}
+                      {v("strapMode") === "igual" && (
+                        <div className="max-w-[200px]">
+                          {num("strapBoth", "Ajuste das duas alças")}
+                        </div>
+                      )}
+                      {v("strapMode") === "diferente" && (
+                        <div className="grid grid-cols-2 gap-4 max-w-md">
+                          {num("strapRight", "Alça direita")}
+                          {num("strapLeft", "Alça esquerda")}
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+          </>
+        )}
+
+        <div>
+          <label>Observações</label>
+          <textarea rows={2} value={v("notes")} onChange={(e) => onChange("notes", e.target.value)} placeholder="Anotações sobre as medidas desta peça (opcional)" />
+        </div>
+      </div>
+    </div>
   );
 }

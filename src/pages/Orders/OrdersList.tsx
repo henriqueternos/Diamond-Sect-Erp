@@ -8,6 +8,8 @@ import {
   buildContractHtml,
   buildContractMailto,
   buildInternalOrderHtml,
+  buildMeasuresHtml,
+  downloadMeasuresPdf,
   buildWithdrawalHtml,
   downloadContractPdf,
   downloadWithdrawalPdf,
@@ -19,6 +21,7 @@ import { OrderStatusBadge } from "../../components/StatusBadge";
 import { useAuth } from "../../hooks/useAuth";
 import { OrderForm } from "./OrderForm";
 import { dateBR, formatDateTimeBR, todayYMD } from "../../utils/dates";
+import { itemsWithMeasures, measureRows } from "../../utils/measures";
 import type { ConflictInfo } from "../../services/OrderService";
 
 function onlyDigits(v: string) {
@@ -275,6 +278,19 @@ export default function OrdersList() {
     setMenuOrder(null);
   }
 
+  function handleViewMeasures(order: Order) {
+    setViewDoc({ title: `Medidas — ${order.orderNumber}`, html: buildMeasuresHtml([order]) });
+    setMenuOrder(null);
+  }
+  function handlePrintMeasures(order: Order) {
+    openPrintWindow(buildMeasuresHtml([order]), `Medidas ${order.orderNumber}`);
+    setMenuOrder(null);
+  }
+  function handleDownloadMeasures(order: Order) {
+    downloadMeasuresPdf([order], `medidas-${order.orderNumber}.pdf`);
+    setMenuOrder(null);
+  }
+
   function openPaymentModal(order: Order) {
     setPaymentOrder(order);
     setPaymentAmount(order.openValue || 0);
@@ -470,13 +486,48 @@ export default function OrdersList() {
             <div>
               <span className="text-mist-500">Produtos:</span>
               <ul className="list-disc list-inside">
-                {summaryOrder.items.map((i) => (
-                  <li key={i.productId}>
+                {summaryOrder.items.map((i, idx) => (
+                  <li key={`${i.productId}-${idx}`}>
                     {i.productName} — qtd {i.quantity} — {money(i.unitValue)}
                   </li>
                 ))}
               </ul>
             </div>
+            {itemsWithMeasures(summaryOrder.items).length > 0 && (
+              <div className="space-y-3">
+                <p className="text-mist-500">Medidas:</p>
+                {itemsWithMeasures(summaryOrder.items).flatMap((i, n) =>
+                  (i.measures || []).map((m, u, arr) => (
+                    <div key={`${i.productId}-${n}-${u}`} className="rounded-lg border border-champagne-soft/50 p-3">
+                      <p className="font-semibold text-mist-100">
+                        {i.productName} <span className="text-mist-500 text-xs font-normal">({i.internalCode})</span>
+                        {arr.length > 1 && <span className="ml-2 text-xs text-champagne">unidade {u + 1} de {arr.length}</span>}
+                      </p>
+                      <p className="text-xs text-mist-500 mb-2">
+                        {summaryOrder.clientName} · evento {dateBR(summaryOrder.eventDate)} · prova {dateBR(summaryOrder.fittingDate)} · retirada{" "}
+                        {dateBR(summaryOrder.pickupDate)} · devolução {dateBR(summaryOrder.returnDate)}
+                      </p>
+                      <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1">
+                        {measureRows(i.measureKind!, m).map((r) => (
+                          <div key={r.label} className="flex justify-between gap-2 border-b border-ink-700 py-0.5">
+                            <dt className="text-mist-500">{r.label}</dt>
+                            <dd className="text-mist-100 text-right">{r.value}</dd>
+                          </div>
+                        ))}
+                      </dl>
+                    </div>
+                  ))
+                )}
+                <div className="flex flex-wrap gap-2">
+                  <button className="btn-secondary !py-1 text-xs" onClick={() => openPrintWindow(buildMeasuresHtml([summaryOrder]), `Medidas ${summaryOrder.orderNumber}`)}>
+                    Imprimir só as medidas
+                  </button>
+                  <button className="btn-secondary !py-1 text-xs" onClick={() => downloadMeasuresPdf([summaryOrder], `medidas-${summaryOrder.orderNumber}.pdf`)}>
+                    Exportar medidas (PDF)
+                  </button>
+                </div>
+              </div>
+            )}
             <p>
               <span className="text-mist-500">Datas:</span> evento {dateBR(summaryOrder.eventDate)} · prova{" "}
               {dateBR(summaryOrder.fittingDate)} · retirada {dateBR(summaryOrder.pickupDate)} · devolução{" "}
@@ -563,6 +614,16 @@ export default function OrdersList() {
             <p className="px-3 text-[10px] uppercase tracking-wide text-mist-700">Pedido interno</p>
             <MenuAction label="Visualizar pedido interno" onClick={() => handleViewInternal(menuOrder)} />
             <MenuAction label="Imprimir pedido interno" onClick={() => handlePrintInternal(menuOrder)} />
+
+            {itemsWithMeasures(menuOrder.items).length > 0 && (
+              <>
+                <div className="border-t border-ink-600 my-2" />
+                <p className="px-3 text-[10px] uppercase tracking-wide text-mist-700">Medidas (uso interno)</p>
+                <MenuAction label="Visualizar medidas" onClick={() => handleViewMeasures(menuOrder)} />
+                <MenuAction label="Imprimir só as medidas" onClick={() => handlePrintMeasures(menuOrder)} />
+                <MenuAction label="Exportar medidas (PDF)" onClick={() => handleDownloadMeasures(menuOrder)} />
+              </>
+            )}
 
             {docError && (
               <div className="text-xs text-danger bg-danger/10 border border-danger/30 rounded-lg px-3 py-2 mt-2">{docError}</div>
