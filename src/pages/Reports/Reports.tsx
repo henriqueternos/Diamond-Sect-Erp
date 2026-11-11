@@ -22,6 +22,7 @@ import {
   Expense,
   EXPENSE_CATEGORY_LABELS,
 } from "../../types";
+import { orderNetTotal } from "../../utils/orderTotals";
 
 interface DrillRow {
   label: string;
@@ -173,7 +174,7 @@ export default function Reports() {
           fittingDate: o.fittingDate,
           pickupDate: o.pickupDate,
           returnDate: o.returnDate,
-          totalValue: o.totalValue,
+          totalValue: orderNetTotal(o),
           amountPaid: o.amountPaid,
           openValue: o.openValue,
           paymentMethod: o.paymentMethod,
@@ -206,12 +207,12 @@ export default function Reports() {
   const totalSold = [...distinctOrderIds]
     .map((id) => orders.find((o) => o.id === id)!)
     .filter((o) => o.type === "venda")
-    .reduce((s, o) => s + o.totalValue, 0);
+    .reduce((s, o) => s + orderNetTotal(o), 0);
   const totalRented = [...distinctOrderIds]
     .map((id) => orders.find((o) => o.id === id)!)
     .filter((o) => o.type === "locacao")
-    .reduce((s, o) => s + o.totalValue, 0);
-  const totalValueSum = [...distinctOrderIds].reduce((s, id) => s + orders.find((o) => o.id === id)!.totalValue, 0);
+    .reduce((s, o) => s + orderNetTotal(o), 0);
+  const totalValueSum = [...distinctOrderIds].reduce((s, id) => s + orderNetTotal(orders.find((o) => o.id === id)!), 0);
   const totalReceived = [...distinctOrderIds].reduce((s, id) => s + orders.find((o) => o.id === id)!.amountPaid, 0);
   const totalOpen = [...distinctOrderIds].reduce((s, id) => s + orders.find((o) => o.id === id)!.openValue, 0);
   const totalProductsQty = rows.reduce((s, r) => s + r.quantity, 0);
@@ -269,7 +270,7 @@ export default function Reports() {
     setDrillDown({
       title: `Pedidos de ${seller}`,
       subtitle: `${list.length} pedido(s)`,
-      rows: list.map((o) => orderDrillRow(o, money(o.totalValue))),
+      rows: list.map((o) => orderDrillRow(o, money(orderNetTotal(o)))),
     });
   }
 
@@ -497,28 +498,28 @@ export default function Reports() {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <div
           className="card p-3 cursor-pointer hover:border-diamond/40"
-          onClick={() => openOrdersDrill("Pedidos encontrados", distinctOrdersList, (o) => o.totalValue)}
+          onClick={() => openOrdersDrill("Pedidos encontrados", distinctOrdersList, (o) => orderNetTotal(o))}
         >
           <p className="text-xs text-mist-500">Pedidos encontrados</p>
           <p className="text-xl font-display">{distinctOrderIds.size}</p>
         </div>
         <div
           className="card p-3 cursor-pointer hover:border-diamond/40"
-          onClick={() => openOrdersDrill("Total vendido", distinctOrdersList.filter((o) => o.type === "venda"), (o) => o.totalValue)}
+          onClick={() => openOrdersDrill("Total vendido", distinctOrdersList.filter((o) => o.type === "venda"), (o) => orderNetTotal(o))}
         >
           <p className="text-xs text-mist-500">Total vendido</p>
           <p className="text-xl font-display text-champagne">{money(totalSold)}</p>
         </div>
         <div
           className="card p-3 cursor-pointer hover:border-diamond/40"
-          onClick={() => openOrdersDrill("Total locado", distinctOrdersList.filter((o) => o.type === "locacao"), (o) => o.totalValue)}
+          onClick={() => openOrdersDrill("Total locado", distinctOrdersList.filter((o) => o.type === "locacao"), (o) => orderNetTotal(o))}
         >
           <p className="text-xs text-mist-500">Total locado</p>
           <p className="text-xl font-display text-diamond">{money(totalRented)}</p>
         </div>
         <div
           className="card p-3 cursor-pointer hover:border-diamond/40"
-          onClick={() => openOrdersDrill("Valor total", distinctOrdersList, (o) => o.totalValue)}
+          onClick={() => openOrdersDrill("Valor total", distinctOrdersList, (o) => orderNetTotal(o))}
         >
           <p className="text-xs text-mist-500">Valor total</p>
           <p className="text-xl font-display">{money(totalValueSum)}</p>

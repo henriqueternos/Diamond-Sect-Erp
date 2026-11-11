@@ -16,6 +16,7 @@ import { PaymentService } from "../../services/PaymentService";
 import { ClientService } from "../../services/ClientService";
 import { Client, Order, Payment, PAYMENT_METHOD_LABELS } from "../../types";
 import { todayYMD, toYMD } from "../../utils/dates";
+import { orderNetTotal } from "../../utils/orderTotals";
 
 function money(v: number) {
   return (v || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -88,7 +89,7 @@ export default function Financial() {
   const partialOrders = filteredOrders.filter((o) => o.amountPaid > 0 && o.openValue > 0);
   const openOrders = filteredOrders.filter((o) => o.amountPaid <= 0 && o.openValue > 0);
 
-  const avgTicket = filteredOrders.length ? filteredOrders.reduce((s, o) => s + o.totalValue, 0) / filteredOrders.length : 0;
+  const avgTicket = filteredOrders.length ? filteredOrders.reduce((s, o) => s + orderNetTotal(o), 0) / filteredOrders.length : 0;
   const rentalCount = filteredOrders.filter((o) => o.type === "locacao").length;
   const saleCount = filteredOrders.filter((o) => o.type === "venda").length;
   const receivedInRange = filteredPayments.reduce((s, p) => s + p.amount, 0);
