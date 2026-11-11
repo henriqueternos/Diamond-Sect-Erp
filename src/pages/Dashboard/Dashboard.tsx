@@ -10,6 +10,7 @@ import { OrderStatusBadge } from "../../components/StatusBadge";
 import { DashboardStagePanel } from "../../components/DashboardStagePanel";
 import { useAuth } from "../../hooks/useAuth";
 import { isToday, todayYMD, toYMD } from "../../utils/dates";
+import { orderNetTotal } from "../../utils/orderTotals";
 
 export default function Dashboard() {
   const navigate = useNavigate();
@@ -295,7 +296,7 @@ export default function Dashboard() {
                   <td>
                     <OrderStatusBadge status={o.status} />
                   </td>
-                  <td>{o.totalValue.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</td>
+                  <td>{orderNetTotal(o).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</td>
                   <td>{o.openValue.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</td>
                 </tr>
               ))}

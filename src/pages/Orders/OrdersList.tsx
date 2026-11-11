@@ -22,6 +22,7 @@ import { useAuth } from "../../hooks/useAuth";
 import { OrderForm } from "./OrderForm";
 import { dateBR, formatDateTimeBR, todayYMD } from "../../utils/dates";
 import { itemsWithMeasures, measureRows } from "../../utils/measures";
+import { orderNetTotal } from "../../utils/orderTotals";
 import type { ConflictInfo } from "../../services/OrderService";
 
 function onlyDigits(v: string) {
@@ -439,7 +440,7 @@ export default function OrdersList() {
                 </td>
                 <td>{dateBR(o.pickupDate)}</td>
                 <td>{dateBR(o.returnDate)}</td>
-                <td>{money(o.totalValue)}</td>
+                <td>{money(orderNetTotal(o))}</td>
                 <td className={o.openValue > 0 ? "text-warn" : "text-success"}>{money(o.openValue)}</td>
                 <td>
                   <button className="btn-ghost !px-2 !py-1 text-xs" onClick={() => setMenuOrder(o)}>
@@ -534,7 +535,7 @@ export default function OrdersList() {
               {dateBR(summaryOrder.returnDate)}
             </p>
             <p>
-              <span className="text-mist-500">Total:</span> {money(summaryOrder.totalValue)} ·{" "}
+              <span className="text-mist-500">Total:</span> {money(orderNetTotal(summaryOrder))} ·{" "}
               <span className="text-mist-500">Em aberto:</span> {money(summaryOrder.openValue)}
             </p>
             <p>
