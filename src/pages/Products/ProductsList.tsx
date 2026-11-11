@@ -13,6 +13,8 @@ import { ProductStatusBadge } from "../../components/StatusBadge";
 import { useAuth } from "../../hooks/useAuth";
 import { exportTableExcel, importExcelFile, ExportColumn } from "../../services/ExportService";
 
+const brl = (v?: number) => (v || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+
 const EXCEL_COLUMNS: ExportColumn[] = [
   { key: "name", label: "Nome" },
   { key: "internalCode", label: "Código" },
@@ -505,6 +507,8 @@ export default function ProductsList() {
               <th>Código</th>
               <th>Categoria</th>
               <th>Disponível</th>
+              <th>Aluguel</th>
+              <th>Venda</th>
               <th>Status</th>
               <th></th>
             </tr>
@@ -545,6 +549,8 @@ export default function ProductsList() {
                 <td>
                   {p.availableQuantity}/{p.totalQuantity}
                 </td>
+                <td className="whitespace-nowrap">{p.rentValue > 0 ? brl(p.rentValue) : "—"}</td>
+                <td className="whitespace-nowrap">{p.saleValue > 0 ? brl(p.saleValue) : "—"}</td>
                 <td>
                   <ProductStatusBadge status={p.status} />
                 </td>
@@ -569,7 +575,7 @@ export default function ProductsList() {
             ))}
             {filtered.length === 0 && (
               <tr>
-                <td colSpan={7} className="text-center text-mist-500 py-8">
+                <td colSpan={9} className="text-center text-mist-500 py-8">
                   Nenhum produto encontrado.
                 </td>
               </tr>
