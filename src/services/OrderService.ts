@@ -80,6 +80,23 @@ export const OrderService = {
     });
   },
 
+  /** Pedidos de um cliente, em tempo real, do mais recente para o mais antigo.
+   * Sem orderBy no Firestore de propósito (where + orderBy exigiria índice composto);
+   * a ordenação é feita aqui, no navegador. */
+  subscribeByClient(clientId: string, callback: (orders: Order[]) => void, onError?: (e: Error) => void) {
+    const q = query(ordersCol, where("clientId", "==", clientId));
+    return onSnapshot(
+      q,
+      (snap) => {
+        const list = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as Order[];
+        const ts = (o: Order) => (o.createdAt as any)?.toMillis?.() ?? new Date(o.orderDate || 0).getTime() ?? 0;
+        list.sort((a, b) => ts(b) - ts(a));
+        callback(list);
+      },
+      (err) => onError?.(err)
+    );
+  },
+
   async getById(id: string): Promise<Order | null> {
     const snap = await getDoc(doc(db, "orders", id));
     if (!snap.exists()) return null;

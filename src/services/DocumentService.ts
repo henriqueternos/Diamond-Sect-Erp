@@ -141,6 +141,22 @@ export function buildContractHtml(order: Order, company: CompanySettings, settin
   `;
 }
 
+/** Bloco "Valores" do termo de retirada: já considera desconto, acréscimo e crédito usado
+ * (mesmo cálculo do contrato), em vez de mostrar só a soma bruta dos itens. */
+function withdrawalValuesHtml(order: Order) {
+  return `
+    <h2>Valores</h2>
+    <div class="totals">
+      <div>Valor dos produtos: ${money(order.totalValue)}</div>
+      ${(order.discount || 0) > 0 ? `<div>Desconto: − ${money(order.discount)}</div>` : ""}
+      ${showSurcharge(order) ? `<div>Acréscimo: + ${money(order.surcharge)}${order.surchargeReason ? ` — ${esc(order.surchargeReason)}` : ""}</div>` : ""}
+      ${(order.creditUsed || 0) > 0 ? `<div>Crédito usado: − ${money(order.creditUsed)}</div>` : ""}
+      <div><b>Total do pedido: ${money(netTotal(order))}</b></div>
+      <div>Valor pago: ${money(order.amountPaid)}</div>
+      <div><b>Valor em aberto: ${money(order.openValue)}</b></div>
+    </div>`;
+}
+
 export function buildWithdrawalHtml(order: Order, company: CompanySettings, settings: DocumentSettings) {
   return `
     <h1>${esc(settings.title)}</h1>
@@ -160,6 +176,8 @@ export function buildWithdrawalHtml(order: Order, company: CompanySettings, sett
 
     <h2>Produtos retirados</h2>
     ${itemsTable(order)}
+
+    ${withdrawalValuesHtml(order)}
 
     <h2>Datas</h2>
     <div class="grid">
@@ -504,6 +522,17 @@ export function downloadWithdrawalPdf(order: Order, company: CompanySettings, se
 
   c.h2("Produtos retirados");
   c.tableItems(order.items);
+
+  c.h2("Valores");
+  c.row("Valor dos produtos", money(order.totalValue));
+  if ((order.discount || 0) > 0) c.row("Desconto", `- ${money(order.discount)}`);
+  if (showSurcharge(order)) {
+    c.row("Acréscimo", `+ ${money(order.surcharge)}${order.surchargeReason ? ` — ${order.surchargeReason}` : ""}`);
+  }
+  if ((order.creditUsed || 0) > 0) c.row("Crédito usado", `- ${money(order.creditUsed)}`);
+  c.row("Total do pedido", money(netTotal(order)));
+  c.row("Valor pago", money(order.amountPaid));
+  c.row("Valor em aberto", money(order.openValue));
 
   c.h2("Datas");
   c.row("Data da retirada", `${dateBR(order.pickupDate)} ${order.pickupTime || ""}`.trim());

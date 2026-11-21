@@ -1,7 +1,9 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { InvoiceService } from "../../services/InvoiceService";
-import { Invoice, InvoiceStatus, INVOICE_STATUS_LABELS } from "../../types";
+import { OrderService } from "../../services/OrderService";
+import { orderNetTotal } from "../../utils/orderTotals";
+import { Invoice, InvoiceStatus, INVOICE_STATUS_LABELS, Order } from "../../types";
 import { Modal } from "../../components/Modal";
 import { useAuth } from "../../hooks/useAuth";
 import { dateBR, todayYMD } from "../../utils/dates";
@@ -26,7 +28,21 @@ export default function InvoicesPage() {
   const [invoiceNumber, setInvoiceNumber] = useState("");
   const [issueDate, setIssueDate] = useState(() => todayYMD());
 
+  const [orders, setOrders] = useState<Order[]>([]);
+
   useEffect(() => InvoiceService.subscribeAll(setInvoices), []);
+  useEffect(() => OrderService.subscribeAll(setOrders), []);
+
+  // Valor da nota = valor atual do pedido já com desconto/acréscimo. Notas antigas foram
+  // gravadas com o valor bruto, então calculamos a partir do pedido (se achar) e só caímos
+  // no valor gravado quando o pedido não existe mais.
+  const invoiceValue = useMemo(() => {
+    const byId = new Map(orders.map((o) => [o.id, o]));
+    return (inv: Invoice) => {
+      const o = byId.get(inv.orderId);
+      return o ? orderNetTotal(o) : inv.totalValue;
+    };
+  }, [orders]);
 
   const filtered = useMemo(() => {
     const t = term.trim().toLowerCase();
@@ -61,7 +77,7 @@ export default function InvoicesPage() {
 
   async function handleToggleWillIssue(inv: Invoice, willIssue: boolean) {
     await InvoiceService.setWillIssue(
-      { id: inv.orderId, orderNumber: inv.orderNumber, clientName: inv.clientName, totalValue: inv.totalValue },
+      { id: inv.orderId, orderNumber: inv.orderNumber, clientName: inv.clientName, totalValue: invoiceValue(inv) },
       willIssue,
       { id: user!.id, name: user!.name }
     );
@@ -124,7 +140,7 @@ export default function InvoicesPage() {
                   {inv.orderNumber}
                 </td>
                 <td>{inv.clientName}</td>
-                <td>{money(inv.totalValue)}</td>
+                <td>{money(invoiceValue(inv))}</td>
                 <td>
                   <span className={`badge ${STATUS_BADGE[inv.status]}`}>{INVOICE_STATUS_LABELS[inv.status]}</span>
                 </td>

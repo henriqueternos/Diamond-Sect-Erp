@@ -8,6 +8,7 @@ import { PaymentService } from "../../services/PaymentService";
 import { CustomerCreditService } from "../../services/CustomerCreditService";
 import { InvoiceService } from "../../services/InvoiceService";
 import { dateBR, todayYMD } from "../../utils/dates";
+import { orderNetTotal } from "../../utils/orderTotals";
 import { effectiveItemComponents } from "../../utils/components";
 import { measureSpecFor, missingMeasures, cleanMeasures, MeasureSpec } from "../../utils/measures";
 import { useAuth } from "../../hooks/useAuth";
@@ -162,6 +163,8 @@ export function OrderForm({
     () => calcTotals({ items: effectiveItems, discount, surcharge: effectiveSurcharge, creditUsed, amountPaid: totalPaidSoFar }),
     [effectiveItems, discount, effectiveSurcharge, creditUsed, totalPaidSoFar]
   );
+  // Valor que vai para o controle de nota fiscal: com desconto e acréscimo aplicados.
+  const invoiceValue = orderNetTotal({ totalValue: totals.totalValue, discount, surcharge: effectiveSurcharge });
   const netTotal = Math.max(
     totals.totalValue - (discount || 0) + (effectiveSurcharge || 0) - (creditUsed || 0),
     0
@@ -461,7 +464,7 @@ export function OrderForm({
         }
 
         await InvoiceService.setWillIssue(
-          { id: existingOrder!.id, orderNumber: existingOrder!.orderNumber, clientName: client.fullName, totalValue: totals.totalValue },
+          { id: existingOrder!.id, orderNumber: existingOrder!.orderNumber, clientName: client.fullName, totalValue: invoiceValue },
           willIssueInvoice,
           { id: user!.id, name: user!.name }
         );
@@ -536,7 +539,7 @@ export function OrderForm({
       }
 
       await InvoiceService.setWillIssue(
-        { id: created.id, orderNumber: created.orderNumber, clientName: client.fullName, totalValue: totals.totalValue },
+        { id: created.id, orderNumber: created.orderNumber, clientName: client.fullName, totalValue: invoiceValue },
         willIssueInvoice,
         { id: user!.id, name: user!.name }
       );

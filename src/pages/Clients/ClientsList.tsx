@@ -1,8 +1,11 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { ClientService } from "../../services/ClientService";
 import { CustomerCreditService, CustomerCreditEntry } from "../../services/CustomerCreditService";
-import { Client } from "../../types";
+import { OrderService } from "../../services/OrderService";
+import { orderNetTotal } from "../../utils/orderTotals";
+import { OrderStatusBadge } from "../../components/StatusBadge";
+import { Client, Order } from "../../types";
 import { Modal, ConfirmDialog } from "../../components/Modal";
 import { ImageUpload } from "../../components/ImageUpload";
 import { useAuth } from "../../hooks/useAuth";
@@ -27,6 +30,15 @@ const EMPTY_CLIENT: Omit<Client, "id"> = {
   photoUrl: "",
 };
 
+function money(v: number) {
+  return (v || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+}
+function dateBR(v?: string) {
+  if (!v) return "—";
+  const [y, m, d] = v.split("-");
+  return d && m && y ? `${d}/${m}/${y}` : v;
+}
+
 function onlyDigits(v: string) {
   return v.replace(/\D/g, "");
 }
@@ -49,6 +61,7 @@ export default function ClientsList() {
   const { can, user } = useAuth();
   const [clients, setClients] = useState<Client[]>([]);
   const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
   const [term, setTerm] = useState(searchParams.get("buscar") || "");
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Client | null>(null);
@@ -64,6 +77,10 @@ export default function ClientsList() {
   const [adjustCreditReason, setAdjustCreditReason] = useState("");
   const [adjustCreditSaving, setAdjustCreditSaving] = useState(false);
   const [adjustCreditError, setAdjustCreditError] = useState<string | null>(null);
+  const [historyClient, setHistoryClient] = useState<Client | null>(null);
+  const [historyOrders, setHistoryOrders] = useState<Order[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState<string | null>(null);
 
   useEffect(() => ClientService.subscribeAll(setClients), []);
 
@@ -108,6 +125,38 @@ export default function ClientsList() {
     }
     return CustomerCreditService.subscribeForClient(editing.id, setCreditHistory);
   }, [editing]);
+
+  useEffect(() => {
+    if (!historyClient) {
+      setHistoryOrders([]);
+      setHistoryError(null);
+      return;
+    }
+    setHistoryLoading(true);
+    setHistoryError(null);
+    const unsub = OrderService.subscribeByClient(
+      historyClient.id,
+      (list) => {
+        setHistoryOrders(list);
+        setHistoryLoading(false);
+      },
+      () => {
+        setHistoryError("Não foi possível carregar o histórico de pedidos deste cliente.");
+        setHistoryLoading(false);
+      }
+    );
+    return unsub;
+  }, [historyClient]);
+
+  // Resumo do histórico: pedidos cancelados não entram nos totais.
+  const historySummary = useMemo(() => {
+    const valid = historyOrders.filter((o) => o.status !== "cancelado");
+    return {
+      count: historyOrders.length,
+      spent: valid.reduce((s, o) => s + orderNetTotal(o), 0),
+      open: valid.reduce((s, o) => s + (o.openValue || 0), 0),
+    };
+  }, [historyOrders]);
 
   const filtered = useMemo(() => ClientService.search(clients, term), [clients, term]);
   const liveEditingClient = useMemo(() => (editing ? clients.find((c) => c.id === editing.id) || editing : null), [
@@ -249,13 +298,21 @@ export default function ClientsList() {
           </thead>
           <tbody>
             {filtered.map((c) => (
-              <tr key={c.id}>
+              <tr
+                key={c.id}
+                className="cursor-pointer hover:bg-ink-600/40"
+                onClick={() => setHistoryClient(c)}
+                title="Clique para ver o histórico de pedidos"
+              >
                 <td className="text-mist-100 font-medium">{c.fullName}</td>
                 <td>{c.cpf}</td>
                 <td>{c.phone}</td>
                 <td>{c.city || "—"}</td>
                 <td>{(c.availableCredit || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</td>
-                <td className="flex gap-2 justify-end">
+                <td className="flex gap-2 justify-end" onClick={(e) => e.stopPropagation()}>
+                  <button className="btn-ghost !px-2 !py-1 text-xs" onClick={() => setHistoryClient(c)}>
+                    Histórico
+                  </button>
                   {c.whatsapp && (
                     <a
                       className="btn-ghost !px-2 !py-1 text-xs"
@@ -431,6 +488,101 @@ export default function ClientsList() {
             </button>
           </div>
         </form>
+      </Modal>
+
+      {/* Histórico de pedidos do cliente */}
+      <Modal
+        open={Boolean(historyClient)}
+        onClose={() => setHistoryClient(null)}
+        title={`Histórico de pedidos — ${historyClient?.fullName ?? ""}`}
+        wide
+      >
+        <div className="space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="card p-3">
+              <p className="text-[11px] uppercase tracking-wide text-mist-500">Pedidos</p>
+              <p className="text-xl font-display text-mist-100">{historySummary.count}</p>
+            </div>
+            <div className="card p-3">
+              <p className="text-[11px] uppercase tracking-wide text-mist-500">Total em pedidos (sem cancelados)</p>
+              <p className="text-xl font-display text-mist-100">{money(historySummary.spent)}</p>
+            </div>
+            <div className="card p-3">
+              <p className="text-[11px] uppercase tracking-wide text-mist-500">Em aberto</p>
+              <p className={`text-xl font-display ${historySummary.open > 0 ? "text-warn" : "text-mist-100"}`}>
+                {money(historySummary.open)}
+              </p>
+            </div>
+          </div>
+
+          {historyLoading && <p className="text-sm text-mist-500">Carregando pedidos...</p>}
+          {historyError && (
+            <p className="text-sm text-danger bg-danger/10 border border-danger/30 rounded-lg px-3 py-2">{historyError}</p>
+          )}
+
+          {!historyLoading && !historyError && historyOrders.length === 0 && (
+            <p className="text-center text-mist-500 py-6">Este cliente ainda não tem pedidos.</p>
+          )}
+
+          {historyOrders.length > 0 && (
+            <div className="card overflow-x-auto max-h-[55vh] overflow-y-auto">
+              <table className="table-shell">
+                <thead>
+                  <tr>
+                    <th>Pedido</th>
+                    <th>Data</th>
+                    <th>Evento</th>
+                    <th>Tipo</th>
+                    <th>Itens</th>
+                    <th>Status</th>
+                    <th>Total</th>
+                    <th>Pago</th>
+                    <th>Em aberto</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {historyOrders.map((o) => (
+                    <tr key={o.id}>
+                      <td className="text-mist-100 font-medium whitespace-nowrap">{o.orderNumber}</td>
+                      <td className="whitespace-nowrap">{dateBR(o.orderDate)}</td>
+                      <td className="whitespace-nowrap">{dateBR(o.eventDate)}</td>
+                      <td>{o.type === "venda" ? "Venda" : "Locação"}</td>
+                      <td className="max-w-[220px] text-xs text-mist-300">
+                        {(o.items || []).map((i) => `${i.productName} (x${i.quantity})`).join(", ") || "—"}
+                      </td>
+                      <td>
+                        <OrderStatusBadge status={o.status} />
+                      </td>
+                      <td className="whitespace-nowrap">{money(orderNetTotal(o))}</td>
+                      <td className="whitespace-nowrap">{money(o.amountPaid)}</td>
+                      <td className={`whitespace-nowrap ${(o.openValue || 0) > 0 && o.status !== "cancelado" ? "text-warn" : ""}`}>
+                        {money(o.openValue)}
+                      </td>
+                      <td>
+                        <button
+                          className="btn-ghost !px-2 !py-1 text-xs"
+                          onClick={() => {
+                            setHistoryClient(null);
+                            navigate(`/pedidos?buscar=${encodeURIComponent(o.orderNumber)}`);
+                          }}
+                        >
+                          Abrir
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          <div className="flex justify-end">
+            <button type="button" className="btn-secondary" onClick={() => setHistoryClient(null)}>
+              Fechar
+            </button>
+          </div>
+        </div>
       </Modal>
 
       {/* Ajustar crédito (fica registrado no histórico) */}
