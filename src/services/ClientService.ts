@@ -1,3 +1,4 @@
+import { normalizeName, searchKey } from "../utils/text";
 import {
   addDoc,
   collection,
@@ -36,6 +37,7 @@ export const ClientService = {
   async create(data: Omit<Client, "id" | "createdAt" | "updatedAt">) {
     const ref = await addDoc(clientsCol, {
       ...data,
+      fullName: normalizeName(data.fullName),
       availableCredit: data.availableCredit ?? 0,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
@@ -46,6 +48,7 @@ export const ClientService = {
   async update(id: string, data: Partial<Client>) {
     await updateDoc(doc(db, "clients", id), {
       ...data,
+      ...(data.fullName !== undefined ? { fullName: normalizeName(data.fullName) } : {}),
       updatedAt: serverTimestamp(),
     });
   },
@@ -61,11 +64,11 @@ export const ClientService = {
   /** Filtro local — a lista completa já vem do listener em tempo real. */
   search(clients: Client[], term: string): Client[] {
     if (!term.trim()) return clients;
-    const t = term.toLowerCase();
+    const t = searchKey(term);
     return clients.filter((c) =>
       [c.fullName, c.cpf, c.phone, c.whatsapp, c.email, c.city]
         .filter(Boolean)
-        .some((field) => field!.toLowerCase().includes(t))
+        .some((field) => searchKey(field).includes(t))
     );
   },
 };

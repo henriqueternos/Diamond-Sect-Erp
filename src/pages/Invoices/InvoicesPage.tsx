@@ -7,6 +7,7 @@ import { Invoice, InvoiceStatus, INVOICE_STATUS_LABELS, Order } from "../../type
 import { Modal } from "../../components/Modal";
 import { useAuth } from "../../hooks/useAuth";
 import { dateBR, todayYMD } from "../../utils/dates";
+import { searchKey } from "../../utils/text";
 
 function money(v: number) {
   return (v || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -45,10 +46,10 @@ export default function InvoicesPage() {
   }, [orders]);
 
   const filtered = useMemo(() => {
-    const t = term.trim().toLowerCase();
+    const t = searchKey(term.trim());
     return invoices
       .filter((i) => statusFilter === "todos" || i.status === statusFilter)
-      .filter((i) => !t || i.orderNumber.toLowerCase().includes(t) || i.clientName.toLowerCase().includes(t))
+      .filter((i) => !t || searchKey(i.orderNumber).includes(t) || searchKey(i.clientName).includes(t))
       .sort((a, b) => (a.orderNumber < b.orderNumber ? 1 : -1));
   }, [invoices, term, statusFilter]);
 

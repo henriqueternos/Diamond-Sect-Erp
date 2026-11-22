@@ -4,6 +4,7 @@ import { ProductService } from "../../services/ProductService";
 import { openPrintWindow, buildMeasuresHtml, downloadMeasuresPdf } from "../../services/DocumentService";
 import { exportTablePdf, ExportColumn } from "../../services/ExportService";
 import { Order, Product, PRODUCT_STATUS_LABELS } from "../../types";
+import { searchKey } from "../../utils/text";
 
 function dateBR(v?: string) {
   if (!v) return "—";
@@ -79,7 +80,7 @@ export default function PickingList() {
           o.items.forEach((item) => {
             const product = productById.get(item.productId);
             if (productType && product?.productType !== productType) return;
-            if (nameFilter && !item.productName.toLowerCase().includes(nameFilter.toLowerCase())) return;
+            if (nameFilter && !searchKey(item.productName).includes(searchKey(nameFilter))) return;
             if (codeFilter && !item.internalCode.toLowerCase().includes(codeFilter.toLowerCase())) return;
             if (colorFilter && product?.color?.toLowerCase() !== colorFilter.toLowerCase()) return;
             if (brandFilter && product?.brand?.toLowerCase() !== brandFilter.toLowerCase()) return;

@@ -12,6 +12,7 @@ import { CloudinaryService } from "../../services/CloudinaryService";
 import { ProductStatusBadge } from "../../components/StatusBadge";
 import { useAuth } from "../../hooks/useAuth";
 import { exportTableExcel, importExcelFile, ExportColumn } from "../../services/ExportService";
+import { formatName, normalizeName } from "../../utils/text";
 
 const brl = (v?: number) => (v || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
@@ -294,7 +295,7 @@ export default function ProductsList() {
       }
       const parsed: ImportRow[] = rawRows.map((row) => {
         const code = cell(row, "Código", "Codigo", "internalCode");
-        const name = cell(row, "Nome", "name", "Nome do produto", "Nome Produto", "Produto");
+        const name = normalizeName(cell(row, "Nome", "name", "Nome do produto", "Nome Produto", "Produto"), { allowDigits: true });
         if (!code || !name) {
           return { code: code || "—", name: name || "—", data: {}, action: "create", error: "Faltando Nome ou Código nesta linha — não será importada." };
         }
@@ -589,7 +590,7 @@ export default function ProductsList() {
         <form onSubmit={handleSave} className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="md:col-span-2">
             <label>Nome do produto *</label>
-            <input required value={form.name} onChange={(e) => update("name", e.target.value)} />
+            <input required value={form.name} onChange={(e) => update("name", formatName(e.target.value, { allowDigits: true }))} placeholder="NOME DO PRODUTO" />
           </div>
           <div>
             <label>Código interno *</label>

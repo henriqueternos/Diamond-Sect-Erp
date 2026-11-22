@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { ClientService } from "../../services/ClientService";
 import { CustomerCreditService, CustomerCreditEntry } from "../../services/CustomerCreditService";
 import { OrderService } from "../../services/OrderService";
+import { formatName, normalizeName } from "../../utils/text";
 import { orderNetTotal } from "../../utils/orderTotals";
 import { OrderStatusBadge } from "../../components/StatusBadge";
 import { Client, Order } from "../../types";
@@ -352,7 +353,7 @@ export default function ClientsList() {
         <form onSubmit={handleSave} className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="md:col-span-2">
             <label>Nome completo *</label>
-            <input required value={form.fullName} onChange={(e) => update("fullName", e.target.value)} />
+            <input required value={form.fullName} onChange={(e) => update("fullName", formatName(e.target.value))} placeholder="NOME COMPLETO" />
           </div>
           <div>
             <label>CPF *</label>

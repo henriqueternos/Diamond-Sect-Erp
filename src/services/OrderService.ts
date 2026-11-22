@@ -22,6 +22,7 @@ import { effectiveItemComponents, componentsOverlap } from "../utils/components"
 import { ProductService } from "./ProductService";
 import { CustomerCreditService } from "./CustomerCreditService";
 import { AuthService } from "./AuthService";
+import { searchKey } from "../utils/text";
 
 const ordersCol = collection(db, "orders");
 const countersRef = doc(db, "companySettings", "counters");
@@ -380,7 +381,7 @@ export const OrderService = {
 
   search(orders: Order[], term: string): Order[] {
     if (!term.trim()) return orders;
-    const t = term.toLowerCase();
+    const t = searchKey(term);
     return orders.filter((o) =>
       [
         o.orderNumber,
@@ -398,7 +399,7 @@ export const OrderService = {
         ...o.items.map((i) => i.internalCode),
       ]
         .filter(Boolean)
-        .some((field) => String(field).toLowerCase().includes(t))
+        .some((field) => searchKey(field).includes(t))
     );
   },
 };

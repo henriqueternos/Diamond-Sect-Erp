@@ -1,3 +1,4 @@
+import { normalizeName, searchKey } from "../utils/text";
 import {
   addDoc,
   collection,
@@ -47,6 +48,7 @@ export const ProductService = {
     const total = data.totalQuantity ?? 0;
     const payload = {
       ...data,
+      name: normalizeName(data.name, { allowDigits: true }),
       availableQuantity: data.availableQuantity ?? total,
       reservedQuantity: data.reservedQuantity ?? 0,
       fittingQuantity: data.fittingQuantity ?? 0,
@@ -71,6 +73,7 @@ export const ProductService = {
     const status = computeStatus(merged);
     await updateDoc(doc(db, "products", id), {
       ...data,
+      ...(data.name !== undefined ? { name: normalizeName(data.name, { allowDigits: true }) } : {}),
       status,
       updatedAt: serverTimestamp(),
     });
@@ -128,7 +131,7 @@ export const ProductService = {
 
   search(products: Product[], term: string): Product[] {
     if (!term.trim()) return products;
-    const t = term.toLowerCase();
+    const t = searchKey(term);
     return products.filter((p) =>
       [
         p.name,
@@ -147,7 +150,7 @@ export const ProductService = {
         p.status,
       ]
         .filter(Boolean)
-        .some((field) => String(field).toLowerCase().includes(t))
+        .some((field) => searchKey(field).includes(t))
     );
   },
 };
