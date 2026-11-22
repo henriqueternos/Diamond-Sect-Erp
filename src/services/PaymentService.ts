@@ -15,6 +15,7 @@ import { getSecondaryAuth, getSecondaryDb } from "../firebase/secondaryAuth";
 import { AuthService } from "./AuthService";
 import { Order, Payment, PaymentMethod } from "../types";
 import { LogService } from "./LogService";
+import { StockSyncService } from "./StockSyncService";
 
 const paymentsCol = collection(db, "payments");
 
@@ -52,6 +53,9 @@ export const PaymentService = {
     const orderRef = doc(db, "orders", order.id);
     const paymentRef = doc(paymentsCol);
     let orderNumberForLog = order.id;
+    // Pedido que ainda era orçamento e recebeu o primeiro pagamento vira "Confirmado".
+    let becameConfirmed = false;
+    let itemProductIds: string[] = [];
 
     await runTransaction(db, async (tx) => {
       const snap = await tx.get(orderRef);
@@ -90,12 +94,32 @@ export const PaymentService = {
         createdAt: serverTimestamp(),
       });
 
+      // Regra: pedido com pagamento lançado não pode continuar como orçamento.
+      // Só mexe em "orcamento" — se já estiver em outra etapa (reservado, em prova...),
+      // o status segue como está.
+      becameConfirmed = current.status === "orcamento";
+      itemProductIds = (current.items || []).map((i) => i.productId);
+
       tx.update(orderRef, {
         amountPaid: newAmountPaid,
         openValue: newOpenValue,
+        ...(becameConfirmed ? { status: "confirmado" } : {}),
         updatedAt: serverTimestamp(),
       });
     });
+
+    if (becameConfirmed) {
+      // "Confirmado" segura o estoque (diferente de orçamento): atualiza os produtos do pedido.
+      await StockSyncService.recomputeForProducts(itemProductIds);
+      await LogService.record({
+        userId: user.id,
+        userName: user.name,
+        action: "pedido_editado",
+        module: "orders",
+        recordId: order.id,
+        details: `Pedido ${orderNumberForLog} passou de Orçamento para Confirmado ao receber pagamento`,
+      });
+    }
 
     await LogService.record({
       userId: user.id,

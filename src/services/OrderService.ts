@@ -30,6 +30,7 @@ const countersRef = doc(db, "companySettings", "counters");
 /** Status que efetivamente "ocupam" o produto numa janela de datas. */
 const ACTIVE_STATUSES: OrderStatus[] = [
   "orcamento",
+  "reservado",
   "confirmado",
   "em_prova",
   "ajuste_andamento",
@@ -232,6 +233,10 @@ export const OrderService = {
 
   async update(id: string, data: Partial<Order>, user: { id: string; name: string }) {
     const current = await this.getById(id);
+    // Pedido com pagamento lançado não pode voltar a ser orçamento.
+    if (data.status === "orcamento" && current && (current.amountPaid || 0) > 0) {
+      throw new Error("Este pedido já tem pagamento lançado, então não pode voltar para Orçamento. Ele deve ficar como Confirmado ou em uma etapa seguinte.");
+    }
     let patch: Partial<Order> = { ...data };
     if (
       current &&
