@@ -30,7 +30,6 @@ const countersRef = doc(db, "companySettings", "counters");
 /** Status que efetivamente "ocupam" o produto numa janela de datas. */
 const ACTIVE_STATUSES: OrderStatus[] = [
   "orcamento",
-  "reservado",
   "confirmado",
   "em_prova",
   "ajuste_andamento",
