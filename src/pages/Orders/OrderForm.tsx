@@ -8,7 +8,17 @@ import { PaymentService } from "../../services/PaymentService";
 import { CustomerCreditService } from "../../services/CustomerCreditService";
 import { InvoiceService } from "../../services/InvoiceService";
 import { dateBR, todayYMD } from "../../utils/dates";
-import { orderNetTotal } from "../../utils/orderTotals";
+import { orderNetTotal, hasPaymentLaunched } from "../../utils/orderTotals";
+import { DateField, DateMarker } from "../../components/DateField";
+import {
+  ORDER_DATE_LABELS,
+  ORDER_DATE_SEQUENCE,
+  OrderDateKey,
+  dateBounds,
+  dateWarnings,
+  diffDays,
+  validateOrderDates,
+} from "../../utils/orderDates";
 import { effectiveItemComponents } from "../../utils/components";
 import { measureSpecFor, missingMeasures, cleanMeasures, MeasureSpec } from "../../utils/measures";
 import { useAuth } from "../../hooks/useAuth";
@@ -170,6 +180,36 @@ export function OrderForm({
     0
   );
 
+  // ---- Datas: ordem lógica Prova → Retirada → Evento → Devolução ----
+  // Em pedido novo, nenhuma data pode ser anterior à data do pedido. Em edição
+  // essa parte fica desligada para não travar pedidos antigos.
+  const dateRuleOpts = { checkOrderDate: !isEdit };
+  const dateValues = { orderDate, fittingDate, pickupDate, eventDate, returnDate };
+  const dateCheck = validateOrderDates(dateValues, dateRuleOpts);
+  const dateWarn = dateWarnings(dateValues);
+  const dateValueOf: Record<OrderDateKey, string> = { fittingDate, pickupDate, eventDate, returnDate };
+
+  function changeDate(key: OrderDateKey, value: string) {
+    if (key === "fittingDate") setFittingDate(value);
+    else if (key === "pickupDate") setPickupDate(value);
+    else if (key === "eventDate") setEventDate(value);
+    else setReturnDate(value);
+    // As datas entram na verificação de disponibilidade: mudou, precisa refazer.
+    setConflictCheckDone(false);
+  }
+
+  // Status que o pedido terá ao ser salvo (o mesmo critério do sistema: com pagamento lançado, vira Confirmado).
+  // (sem produtos ainda não há o que liberar: o total zerado só conta como "nada a pagar" quando há itens)
+  const documentsReleased =
+    items.length > 0 &&
+    hasPaymentLaunched({
+      totalValue: totals.totalValue,
+      discount,
+      surcharge: effectiveSurcharge,
+      amountPaid: totalPaidSoFar,
+      creditUsed,
+    });
+
   function addPayment() {
     if (pickPaymentAmount <= 0) return;
     if (pickPaymentAmount - totals.openValue > 0.009) {
@@ -323,8 +363,8 @@ export function OrderForm({
       setErrorMsg(`Preencha as datas obrigatórias: ${missingDates.join(", ")}.`);
       return;
     }
-    if (returnDate && pickupDate && returnDate < pickupDate) {
-      setErrorMsg("A data da devolução não pode ser anterior à data da retirada.");
+    if (dateCheck.messages.length > 0) {
+      setErrorMsg(`Revise as datas do pedido: ${dateCheck.messages.join(" ")}`);
       return;
     }
     // Medidas obrigatórias (pedidos antigos sem nenhuma medida não são bloqueados ao editar).
@@ -555,6 +595,19 @@ export function OrderForm({
   const money = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
   const isSale = type === "venda";
 
+  // Etapas da linha do tempo, na ordem lógica. Só prova, retirada e devolução têm horário.
+  const dateSteps: { key: OrderDateKey; hint: string; required: boolean; time?: [string, (v: string) => void] }[] = [
+    { key: "fittingDate", hint: "Cliente prova as peças", required: true, time: [fittingTime, setFittingTime] },
+    { key: "pickupDate", hint: "Cliente leva as peças", required: true, time: [pickupTime, setPickupTime] },
+    { key: "eventDate", hint: "Dia da festa ou cerimônia", required: true },
+    { key: "returnDate", hint: isSale ? "Não se aplica à venda" : "Peças voltam para a loja", required: !isSale, time: [returnTime, setReturnTime] },
+  ];
+  const filledDateKeys = ORDER_DATE_SEQUENCE.filter((k) => Boolean(dateValueOf[k]));
+  const calendarStartMonth = eventDate || pickupDate || fittingDate || returnDate || undefined;
+  const markersFor = (key: OrderDateKey): DateMarker[] =>
+    ORDER_DATE_SEQUENCE.filter((k) => k !== key && Boolean(dateValueOf[k])).map((k) => ({ date: dateValueOf[k], label: ORDER_DATE_LABELS[k] }));
+  const gapText = (days: number) => (days === 0 ? "mesmo dia" : days === 1 ? "1 dia" : `${days} dias`);
+
   return (
     <form onSubmit={handleSubmit} className="space-y-5 max-w-5xl mx-auto">
       {/* 1 — Cliente e tipo */}
@@ -753,63 +806,92 @@ export function OrderForm({
       </Section>
 
       {/* 3 — Datas */}
-      <Section n={3} title="Datas e horários" hint="As datas são obrigatórias. Os horários são opcionais.">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <div>
-            <label>Data do pedido</label>
-            <input type="date" value={orderDate} onChange={(e) => setOrderDate(e.target.value)} />
-          </div>
-          <div>
-            <label>Data do evento *</label>
-            <input type="date" required value={eventDate} onChange={(e) => setEventDate(e.target.value)} />
-          </div>
-          <div>
-            <label>Data da prova *</label>
-            <input type="date" required value={fittingDate} onChange={(e) => setFittingDate(e.target.value)} />
-          </div>
-          <div>
-            <label>Horário da prova (opcional)</label>
-            <input type="time" value={fittingTime} onChange={(e) => setFittingTime(e.target.value)} />
-          </div>
+      <Section
+        n={3}
+        title="Datas e horários"
+        hint="As datas seguem a ordem Prova → Retirada → Evento → Devolução. O calendário bloqueia os dias que não fazem sentido e marca os feriados."
+      >
+        <div className="max-w-xs mb-4">
+          <label>Data do pedido</label>
+          <DateField value={orderDate} onChange={setOrderDate} placeholder="Data do pedido" />
+        </div>
 
-          <div>
-            <label>Data da retirada *</label>
-            <input
-              type="date"
-              required
-              value={pickupDate}
-              onChange={(e) => {
-                setPickupDate(e.target.value);
-                setConflictCheckDone(false);
-              }}
-            />
-          </div>
-          <div>
-            <label>Horário da retirada (opcional)</label>
-            <input type="time" value={pickupTime} onChange={(e) => setPickupTime(e.target.value)} />
-          </div>
-          <div>
-            <label>Data da devolução {isSale ? "(não se aplica à venda)" : "*"}</label>
-            <input
-              type="date"
-              required={!isSale}
-              value={returnDate}
-              min={pickupDate || undefined}
-              onChange={(e) => {
-                setReturnDate(e.target.value);
-                setConflictCheckDone(false);
-              }}
-            />
-          </div>
-          <div>
-            <label>Horário da devolução (opcional)</label>
-            <input type="time" value={returnTime} onChange={(e) => setReturnTime(e.target.value)} />
-          </div>
+        <ol className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          {dateSteps.map((step, idx) => {
+            const { key } = step;
+            const bounds = dateBounds(key, dateValues, dateRuleOpts);
+            const hasError = Boolean(dateCheck.errors[key]);
+            return (
+              <li
+                key={key}
+                className={`rounded-xl border p-3 space-y-2 ${
+                  hasError ? "border-danger/50 bg-danger/5" : dateValueOf[key] ? "border-champagne-soft/70 bg-champagne-dim/10" : "border-ink-600"
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <span className="w-6 h-6 shrink-0 rounded-full border border-champagne-soft text-champagne text-xs font-semibold flex items-center justify-center bg-champagne-dim/30">
+                    {idx + 1}
+                  </span>
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-mist-100 leading-tight">
+                      {ORDER_DATE_LABELS[key]}
+                      {step.required && " *"}
+                    </p>
+                    <p className="text-[11px] text-mist-500 leading-tight">{step.hint}</p>
+                  </div>
+                </div>
+                <DateField
+                  value={dateValueOf[key]}
+                  onChange={(v) => changeDate(key, v)}
+                  min={bounds.min}
+                  max={bounds.max}
+                  minFrom={bounds.minFrom}
+                  maxFrom={bounds.maxFrom}
+                  markers={markersFor(key)}
+                  initialMonth={calendarStartMonth}
+                  error={hasError ? "Fora da ordem das datas — veja o aviso abaixo." : null}
+                  warning={dateWarn[key] || null}
+                  clearable
+                />
+                {step.time && (
+                  <div>
+                    <label>Horário (opcional)</label>
+                    <input type="time" value={step.time[0]} onChange={(e) => step.time![1](e.target.value)} />
+                  </div>
+                )}
+              </li>
+            );
+          })}
+        </ol>
 
-          <div className="sm:col-span-2 lg:col-span-4">
-            <label>Observações da prova (opcional)</label>
-            <input value={fittingNotes} onChange={(e) => setFittingNotes(e.target.value)} />
+        {dateCheck.messages.length > 0 && (
+          <div className="mt-3 rounded-lg border border-danger/40 bg-danger/10 px-3 py-2 text-xs text-danger space-y-0.5">
+            <p className="font-semibold">Revise as datas antes de salvar:</p>
+            {dateCheck.messages.map((m) => (
+              <p key={m}>• {m}</p>
+            ))}
           </div>
+        )}
+
+        {filledDateKeys.length >= 2 && (
+          <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1.5 text-xs text-mist-500" aria-label="Resumo da linha do tempo">
+            {filledDateKeys.map((k, i) => {
+              const gap = i > 0 ? diffDays(dateValueOf[filledDateKeys[i - 1]], dateValueOf[k]) : 0;
+              return (
+                <React.Fragment key={k}>
+                  {i > 0 && <span className={gap < 0 ? "text-danger font-semibold" : "text-mist-700"}>{gap < 0 ? "fora de ordem ▸" : `${gapText(gap)} ▸`}</span>}
+                  <span className="px-2 py-0.5 rounded-full border border-champagne-soft/60 text-mist-300">
+                    <b className="font-semibold">{ORDER_DATE_LABELS[k]}</b> {dateBR(dateValueOf[k])}
+                  </span>
+                </React.Fragment>
+              );
+            })}
+          </div>
+        )}
+
+        <div className="mt-4">
+          <label>Observações da prova (opcional)</label>
+          <input value={fittingNotes} onChange={(e) => setFittingNotes(e.target.value)} />
         </div>
 
         <div className="mt-4 flex flex-wrap items-center gap-3">
@@ -1069,6 +1151,20 @@ export function OrderForm({
             <p className="text-xs uppercase tracking-wider text-mist-500">Valor em aberto</p>
             <p className="text-lg font-display text-warn">{money(totals.openValue)}</p>
           </div>
+        </div>
+        <div className="mt-4 pt-4 border-t border-ink-600/70 flex flex-wrap items-center gap-x-3 gap-y-2">
+          {isEdit ? (
+            <span className="badge bg-champagne-dim/60 text-mist-100">{ORDER_STATUS_LABELS[existingOrder!.status]}</span>
+          ) : (
+            <span className={`badge ${totalPaidSoFar > 0 ? "bg-success/15 text-success" : "bg-warn/15 text-warn"}`}>
+              {totalPaidSoFar > 0 ? "Confirmado" : "Orçamento"}
+            </span>
+          )}
+          <p className={`text-xs ${documentsReleased ? "text-success" : "text-mist-500"}`}>
+            {documentsReleased
+              ? "Contrato e termo de retirada liberados para impressão."
+              : "Sem valor lançado: contrato e termo de retirada ficam bloqueados até lançar um pagamento."}
+          </p>
         </div>
       </div>
 

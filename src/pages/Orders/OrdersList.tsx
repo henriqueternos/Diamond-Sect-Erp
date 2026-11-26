@@ -22,7 +22,9 @@ import { useAuth } from "../../hooks/useAuth";
 import { OrderForm } from "./OrderForm";
 import { dateBR, formatDateTimeBR, todayYMD } from "../../utils/dates";
 import { itemsWithMeasures, measureRows } from "../../utils/measures";
-import { orderNetTotal } from "../../utils/orderTotals";
+import { orderNetTotal, hasPaymentLaunched } from "../../utils/orderTotals";
+import { DateField, DateMarker } from "../../components/DateField";
+import { OrderDateKey, ORDER_DATE_LABELS, dateBounds, dateWarnings, firstDateError, validateOrderDates } from "../../utils/orderDates";
 import type { ConflictInfo } from "../../services/OrderService";
 
 function onlyDigits(v: string) {
@@ -73,6 +75,8 @@ export default function OrdersList() {
   const [cancelAuthError, setCancelAuthError] = useState<string | null>(null);
   const [cancelAuthLoading, setCancelAuthLoading] = useState(false);
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
+  // Contrato / termo de retirada pedidos num pedido sem valor lançado.
+  const [blockedDoc, setBlockedDoc] = useState<{ order: Order; docLabel: string } | null>(null);
 
   useEffect(() => OrderService.subscribeAll(setOrders), []);
 
@@ -88,6 +92,38 @@ export default function OrdersList() {
     const q = searchParams.get("buscar");
     if (q) setTerm(q);
   }, [searchParams]);
+
+  // Ao abrir "Pagamentos" (inclusive pelo atalho do aviso de documento bloqueado),
+  // leva o cursor direto para o campo de valor.
+  useEffect(() => {
+    if (!paymentOrder) return;
+    const t = window.setTimeout(() => {
+      const el = document.getElementById("payment-amount-input") as HTMLInputElement | null;
+      if (!el) return;
+      el.scrollIntoView({ block: "center", behavior: "smooth" });
+      el.focus({ preventScroll: true });
+      try {
+        el.select();
+      } catch {
+        /* alguns navegadores não deixam selecionar texto em campo numérico */
+      }
+    }, 80);
+    return () => window.clearTimeout(t);
+  }, [paymentOrder?.id]);
+
+  // A lista atualiza em tempo real, mas o menu guarda uma cópia do pedido de quando foi
+  // aberto. Para a regra de pagamento (e para o documento impresso) usa-se sempre a versão mais recente.
+  const liveOrder = (o: Order): Order => orders.find((x) => x.id === o.id) || o;
+
+  /** Contrato e termo de retirada só saem com algum valor lançado no pedido.
+   * Devolve true se está liberado; senão abre o aviso com o atalho para lançar o pagamento. */
+  function ensureDocumentsReleased(order: Order, docLabel: string): boolean {
+    if (hasPaymentLaunched(order)) return true;
+    setMenuOrder(null);
+    setBlockedDoc({ order, docLabel });
+    return false;
+  }
+  const menuReleased = menuOrder ? hasPaymentLaunched(liveOrder(menuOrder)) : true;
 
   const filtered = useMemo(() => OrderService.search(orders, term), [orders, term]);
   const livePaymentOrder = useMemo(
@@ -125,6 +161,17 @@ export default function OrdersList() {
   async function handleSaveDates(e: React.FormEvent) {
     e.preventDefault();
     if (!datesOrder) return;
+    const dateProblem = firstDateError({
+      orderDate: datesOrder.orderDate,
+      eventDate: datesOrder.eventDate,
+      fittingDate: editFittingDate,
+      pickupDate: editPickupDate,
+      returnDate: editReturnDate,
+    });
+    if (dateProblem) {
+      setDatesError(`Revise as datas: ${dateProblem}`);
+      return;
+    }
     setDatesSaving(true);
     setDatesError(null);
     try {
@@ -223,19 +270,25 @@ export default function OrdersList() {
       setMenuOrder(null);
     });
   }
-  function handlePrintContract(order: Order) {
+  function handlePrintContract(menuItem: Order) {
+    const order = liveOrder(menuItem);
+    if (!ensureDocumentsReleased(order, "o contrato")) return;
     withDoc("print-contract", order.type, ({ company, contract }) => {
       openPrintWindow(buildContractHtml(order, company, contract), `Contrato ${order.orderNumber}`);
       setMenuOrder(null);
     });
   }
-  function handleDownloadContract(order: Order) {
+  function handleDownloadContract(menuItem: Order) {
+    const order = liveOrder(menuItem);
+    if (!ensureDocumentsReleased(order, "o contrato")) return;
     withDoc("download-contract", order.type, ({ company, contract }) => {
       downloadContractPdf(order, company, contract);
       setMenuOrder(null);
     });
   }
-  async function handleEmailContract(order: Order) {
+  async function handleEmailContract(menuItem: Order) {
+    const order = liveOrder(menuItem);
+    if (!ensureDocumentsReleased(order, "o contrato")) return;
     setDocError(null);
     setDocBusy("email-contract");
     try {
@@ -257,13 +310,17 @@ export default function OrdersList() {
       setMenuOrder(null);
     });
   }
-  function handlePrintWithdrawal(order: Order) {
+  function handlePrintWithdrawal(menuItem: Order) {
+    const order = liveOrder(menuItem);
+    if (!ensureDocumentsReleased(order, "o termo de retirada")) return;
     withDoc("print-withdrawal", order.type, ({ company, withdrawal }) => {
       openPrintWindow(buildWithdrawalHtml(order, company, withdrawal), `Retirada ${order.orderNumber}`);
       setMenuOrder(null);
     });
   }
-  function handleDownloadWithdrawal(order: Order) {
+  function handleDownloadWithdrawal(menuItem: Order) {
+    const order = liveOrder(menuItem);
+    if (!ensureDocumentsReleased(order, "o termo de retirada")) return;
     withDoc("download-withdrawal", order.type, ({ company, withdrawal }) => {
       downloadWithdrawalPdf(order, company, withdrawal);
       setMenuOrder(null);
@@ -354,6 +411,38 @@ export default function OrdersList() {
       setPaymentSaving(false);
     }
   }
+
+  // Modal "Editar datas": o evento não muda aqui, mas serve de limite para as outras datas.
+  const editDateValues = datesOrder
+    ? {
+        orderDate: datesOrder.orderDate,
+        eventDate: datesOrder.eventDate,
+        fittingDate: editFittingDate,
+        pickupDate: editPickupDate,
+        returnDate: editReturnDate,
+      }
+    : {};
+  const editDateCheck = validateOrderDates(editDateValues);
+  const editDateWarn = dateWarnings(editDateValues);
+  const renderEditDate = (key: OrderDateKey, value: string, onChange: (v: string) => void) => {
+    const b = dateBounds(key, editDateValues);
+    const markers: DateMarker[] = datesOrder?.eventDate ? [{ date: datesOrder.eventDate, label: "Evento" }] : [];
+    return (
+      <DateField
+        value={value}
+        onChange={onChange}
+        min={b.min}
+        max={b.max}
+        minFrom={b.minFrom}
+        maxFrom={b.maxFrom}
+        markers={markers}
+        initialMonth={datesOrder?.eventDate || undefined}
+        error={editDateCheck.errors[key] ? "Fora da ordem das datas — veja o aviso abaixo." : null}
+        warning={editDateWarn[key] || null}
+        clearable
+      />
+    );
+  };
 
   return (
     <div className="space-y-5">
@@ -584,15 +673,22 @@ export default function OrdersList() {
 
             <div className="border-t border-ink-600 my-2" />
             <p className="px-3 text-[10px] uppercase tracking-wide text-mist-700">Contrato</p>
+            {!menuReleased && (
+              <p className="px-3 text-[11px] text-warn leading-snug">
+                Sem valor lançado neste pedido: imprimir contrato e termo de retirada fica bloqueado até lançar um pagamento.
+              </p>
+            )}
             <MenuAction label="Visualizar contrato" busy={docBusy === "view-contract"} onClick={() => handleViewContract(menuOrder)} />
-            <MenuAction label="Imprimir contrato" busy={docBusy === "print-contract"} onClick={() => handlePrintContract(menuOrder)} />
+            <MenuAction label="Imprimir contrato" locked={!menuReleased} busy={docBusy === "print-contract"} onClick={() => handlePrintContract(menuOrder)} />
             <MenuAction
               label="Baixar contrato em PDF"
+              locked={!menuReleased}
               busy={docBusy === "download-contract"}
               onClick={() => handleDownloadContract(menuOrder)}
             />
             <MenuAction
               label="Enviar contrato por e-mail"
+              locked={!menuReleased}
               busy={docBusy === "email-contract"}
               onClick={() => handleEmailContract(menuOrder)}
             />
@@ -602,11 +698,13 @@ export default function OrdersList() {
             <MenuAction label="Visualizar retirada" busy={docBusy === "view-withdrawal"} onClick={() => handleViewWithdrawal(menuOrder)} />
             <MenuAction
               label="Imprimir retirada"
+              locked={!menuReleased}
               busy={docBusy === "print-withdrawal"}
               onClick={() => handlePrintWithdrawal(menuOrder)}
             />
             <MenuAction
               label="Baixar retirada em PDF"
+              locked={!menuReleased}
               busy={docBusy === "download-withdrawal"}
               onClick={() => handleDownloadWithdrawal(menuOrder)}
             />
@@ -669,6 +767,39 @@ export default function OrdersList() {
         )}
       </Modal>
 
+      {/* Documento bloqueado: pedido sem valor lançado */}
+      <Modal open={Boolean(blockedDoc)} onClose={() => setBlockedDoc(null)} title="Documento bloqueado">
+        {blockedDoc && (
+          <div className="space-y-4">
+            <div className="rounded-lg border border-warn/40 bg-warn/10 px-3 py-3 text-sm text-mist-100">
+              O pedido <b>{blockedDoc.order.orderNumber}</b> ainda não tem nenhum valor lançado, então {blockedDoc.docLabel} fica bloqueado. Lance um
+              pagamento (sinal ou valor total) para liberar.
+            </div>
+            {!can("financial", "edit") && (
+              <p className="text-xs text-mist-500">Você não tem permissão para lançar pagamentos. Peça para quem tem acesso ao Financeiro registrar o valor.</p>
+            )}
+            <div className="flex justify-end gap-2">
+              <button type="button" className="btn-secondary" onClick={() => setBlockedDoc(null)}>
+                Fechar
+              </button>
+              {can("financial", "edit") && (
+                <button
+                  type="button"
+                  className="btn-primary"
+                  onClick={() => {
+                    const target = liveOrder(blockedDoc.order);
+                    setBlockedDoc(null);
+                    openPaymentModal(target);
+                  }}
+                >
+                  Lançar pagamento
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+      </Modal>
+
       {/* Registrar pagamento */}
       <Modal open={Boolean(paymentOrder)} onClose={() => setPaymentOrder(null)} title={`Pagamentos — ${livePaymentOrder?.orderNumber ?? ""}`} wide>
         {livePaymentOrder && (
@@ -720,6 +851,7 @@ export default function OrdersList() {
               <div>
                 <label>Valor pago agora (R$)</label>
                 <input
+                  id="payment-amount-input"
                   type="number"
                   step="0.01"
                   min={0.01}
@@ -815,10 +947,16 @@ export default function OrdersList() {
             <p className="text-xs text-mist-700">
               Pedido criado em {formatDateTimeBR(datesOrder.createdAt)} — este registro não pode ser alterado.
             </p>
+            {datesOrder.eventDate && (
+              <p className="text-xs text-mist-500">
+                Data do evento: <b className="text-mist-100">{dateBR(datesOrder.eventDate)}</b> — não muda aqui; as outras datas precisam respeitar a ordem
+                Prova → Retirada → Evento → Devolução.
+              </p>
+            )}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label>Data da prova</label>
-                <input type="date" value={editFittingDate} onChange={(e) => setEditFittingDate(e.target.value)} />
+                {renderEditDate("fittingDate", editFittingDate, setEditFittingDate)}
               </div>
               <div>
                 <label>Horário da prova</label>
@@ -826,13 +964,22 @@ export default function OrdersList() {
               </div>
               <div>
                 <label>Data da retirada</label>
-                <input type="date" value={editPickupDate} onChange={(e) => setEditPickupDate(e.target.value)} />
+                {renderEditDate("pickupDate", editPickupDate, setEditPickupDate)}
               </div>
               <div>
                 <label>Data da devolução</label>
-                <input type="date" value={editReturnDate} onChange={(e) => setEditReturnDate(e.target.value)} />
+                {renderEditDate("returnDate", editReturnDate, setEditReturnDate)}
               </div>
             </div>
+
+            {editDateCheck.messages.length > 0 && (
+              <div className="rounded-lg border border-danger/40 bg-danger/10 px-3 py-2 text-xs text-danger space-y-0.5">
+                <p className="font-semibold">Revise as datas antes de salvar:</p>
+                {editDateCheck.messages.map((m) => (
+                  <p key={m}>• {m}</p>
+                ))}
+              </div>
+            )}
 
             <button type="button" className="btn-secondary text-xs" onClick={handleCheckDateConflicts} disabled={datesChecking}>
               {datesChecking ? "Verificando..." : "Verificar disponibilidade com as novas datas"}
@@ -908,14 +1055,19 @@ export default function OrdersList() {
   );
 }
 
-function MenuAction({ label, onClick, busy }: { label: string; onClick: () => void; busy?: boolean }) {
+function MenuAction({ label, onClick, busy, locked }: { label: string; onClick: () => void; busy?: boolean; locked?: boolean }) {
   return (
     <button
-      className="w-full text-left px-3 py-2 rounded-lg hover:bg-ink-700 text-sm flex items-center justify-between disabled:opacity-50"
+      className={`w-full text-left px-3 py-2 rounded-lg hover:bg-ink-700 text-sm flex items-center justify-between disabled:opacity-50 ${
+        locked ? "text-mist-500" : ""
+      }`}
       onClick={onClick}
       disabled={busy}
+      title={locked ? "Bloqueado: o pedido ainda não tem valor lançado" : undefined}
     >
-      {label} {busy && <span className="text-xs text-mist-500">gerando...</span>}
+      {label}
+      {busy && <span className="text-xs text-mist-500">gerando...</span>}
+      {locked && !busy && <span className="text-[11px] text-warn">🔒 bloqueado</span>}
     </button>
   );
 }

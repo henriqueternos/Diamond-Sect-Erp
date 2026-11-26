@@ -1,6 +1,16 @@
 import jsPDF from "jspdf";
 import { measureRows, itemsWithMeasures } from "../utils/measures";
 import { CompanySettings, DocumentSettings, Order, PAYMENT_METHOD_LABELS, CLIENT_CATEGORY_LABELS, ORDER_STATUS_LABELS } from "../types";
+import { hasPaymentLaunched } from "../utils/orderTotals";
+
+/** Trava de segurança: contrato e termo de retirada só são gerados (PDF / e-mail) para pedido com
+ * algum valor lançado. A tela já bloqueia antes e explica o motivo; isto protege qualquer outro
+ * ponto que venha a chamar essas funções diretamente. */
+function assertDocumentsReleased(order: Order, what: string) {
+  if (!hasPaymentLaunched(order)) {
+    throw new Error(`O pedido ${order.orderNumber} ainda não tem nenhum valor lançado — ${what} só é liberado depois de lançar um pagamento.`);
+  }
+}
 
 /** Escapa texto digitado pelo usuário antes de colocar no HTML do documento
  * (nome com "&" ou "<", observações etc. não podem quebrar nem injetar HTML). */
@@ -451,6 +461,7 @@ function pdfComposer(_title: string) {
 }
 
 export function downloadContractPdf(order: Order, company: CompanySettings, settings: DocumentSettings) {
+  assertDocumentsReleased(order, "o contrato");
   const c = pdfComposer(settings.title);
   c.h1(settings.title);
   c.subtitle(`Pedido nº ${esc(order.orderNumber)}`);
@@ -508,6 +519,7 @@ export function downloadContractPdf(order: Order, company: CompanySettings, sett
 }
 
 export function downloadWithdrawalPdf(order: Order, company: CompanySettings, settings: DocumentSettings) {
+  assertDocumentsReleased(order, "o termo de retirada");
   const c = pdfComposer(settings.title);
   c.h1(settings.title);
   c.subtitle(`Pedido nº ${esc(order.orderNumber)}`);
@@ -551,6 +563,7 @@ export function downloadWithdrawalPdf(order: Order, company: CompanySettings, se
 /** ---------------- E-mail (mailto — funciona sem backend nem conta externa) ---------------- */
 
 export function buildContractMailto(order: Order, clientEmail: string | undefined) {
+  assertDocumentsReleased(order, "o contrato");
   const subject = encodeURIComponent(`Contrato — Pedido ${order.orderNumber} — Diamond Sect`);
   const body = encodeURIComponent(
     `Olá ${esc(order.clientName)},\n\n` +

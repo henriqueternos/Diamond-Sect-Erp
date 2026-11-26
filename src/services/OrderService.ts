@@ -23,6 +23,7 @@ import { ProductService } from "./ProductService";
 import { CustomerCreditService } from "./CustomerCreditService";
 import { AuthService } from "./AuthService";
 import { searchKey } from "../utils/text";
+import { firstDateError } from "../utils/orderDates";
 
 const ordersCol = collection(db, "orders");
 const countersRef = doc(db, "companySettings", "counters");
@@ -208,6 +209,9 @@ export const OrderService = {
     data: Omit<Order, "id" | "orderNumber" | "totalValue" | "openValue" | "createdAt" | "updatedAt">,
     user: { id: string; name: string }
   ) {
+    // Datas fora de ordem (ex.: retirada depois do evento) nunca chegam a gastar um número de pedido.
+    const dateError = firstDateError(data, { checkOrderDate: true });
+    if (dateError) throw new Error(dateError);
     const orderNumber = await this.nextOrderNumber();
     const { totalValue, openValue } = calcTotals(data);
     const ref = await addDoc(ordersCol, {
@@ -235,6 +239,12 @@ export const OrderService = {
     // Pedido com pagamento lançado não pode voltar a ser orçamento.
     if (data.status === "orcamento" && current && (current.amountPaid || 0) > 0) {
       throw new Error("Este pedido já tem pagamento lançado, então não pode voltar para Orçamento. Ele deve ficar como Confirmado ou em uma etapa seguinte.");
+    }
+    // Só confere a ordem das datas quando alguma data está sendo alterada (trocar status não é afetado).
+    const touchesDates = ["orderDate", "fittingDate", "pickupDate", "eventDate", "returnDate"].some((k) => k in data);
+    if (current && touchesDates) {
+      const dateError = firstDateError({ ...current, ...data });
+      if (dateError) throw new Error(dateError);
     }
     let patch: Partial<Order> = { ...data };
     if (
